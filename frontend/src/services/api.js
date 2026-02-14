@@ -193,6 +193,16 @@ export const adminAPI = {
     return response.data
   },
 
+  deleteClass: async (classId) => {
+    const response = await api.delete(`/api/admin/classes/${classId}`)
+    return response.data
+  },
+
+  deleteDivision: async (divisionId) => {
+    const response = await api.delete(`/api/admin/divisions/${divisionId}`)
+    return response.data
+  },
+
   // Edit attendance status
   editAttendanceStatus: async (recordId, status, adminId) => {
     const response = await api.put(

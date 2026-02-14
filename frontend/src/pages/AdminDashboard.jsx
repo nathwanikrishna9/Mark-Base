@@ -22,13 +22,19 @@ function AdminDashboard({ user, onLogout }) {
   const [students, setStudents] = useState([])
   const [staff, setStaff] = useState([])
   const [subjects, setSubjects] = useState([])
+  const [parents, setParents] = useState([])
+  const hasParentUsername = parents.some((parent) => parent.username)
   
   // Form states
   const [showDeptForm, setShowDeptForm] = useState(false)
+  const [showClassForm, setShowClassForm] = useState(false)
+  const [showDivisionForm, setShowDivisionForm] = useState(false)
   const [showStudentForm, setShowStudentForm] = useState(false)
   const [showStaffForm, setShowStaffForm] = useState(false)
   
   const [deptForm, setDeptForm] = useState({ name: '', code: '' })
+  const [classForm, setClassForm] = useState({ name: '', department_id: '' })
+  const [divisionForm, setDivisionForm] = useState({ name: '', class_id: '' })
   const [studentForm, setStudentForm] = useState({
     username: '',
     roll_number: '',
@@ -74,14 +80,15 @@ function AdminDashboard({ user, onLogout }) {
 
   const loadAllData = async () => {
     try {
-      const [depts, cls, divs, studs, stf, subjs, btchs] = await Promise.all([
+      const [depts, cls, divs, studs, stf, subjs, btchs, prnts] = await Promise.all([
         adminAPI.getDepartments(),
         adminAPI.getClasses(),
         adminAPI.getDivisions(),
         adminAPI.getStudents(),
         adminAPI.getStaff(),
         adminAPI.getSubjects(),
-        adminAPI.getBatches()
+        adminAPI.getBatches(),
+        adminAPI.getParents()
       ])
       setDepartments(depts)
       setClasses(cls)
@@ -90,6 +97,7 @@ function AdminDashboard({ user, onLogout }) {
       setStaff(stf)
       setSubjects(subjs)
       setBatches(btchs)
+      setParents(prnts)
     } catch (error) {
       showMessage('error', 'Failed to load data')
     }
@@ -112,6 +120,42 @@ function AdminDashboard({ user, onLogout }) {
     } catch (error) {
       console.error('Department creation error:', error)
       const errorMsg = error.response?.data?.detail || error.message || 'Failed to create department'
+      showMessage('error', errorMsg)
+    }
+  }
+
+  const handleCreateClass = async (e) => {
+    e.preventDefault()
+    try {
+      const payload = {
+        name: classForm.name.trim(),
+        department_id: parseInt(classForm.department_id)
+      }
+      await adminAPI.createClass(payload)
+      showMessage('success', 'Class created successfully!')
+      setShowClassForm(false)
+      setClassForm({ name: '', department_id: '' })
+      loadAllData()
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to create class'
+      showMessage('error', errorMsg)
+    }
+  }
+
+  const handleCreateDivision = async (e) => {
+    e.preventDefault()
+    try {
+      const payload = {
+        name: divisionForm.name.trim(),
+        class_id: parseInt(divisionForm.class_id)
+      }
+      await adminAPI.createDivision(payload)
+      showMessage('success', 'Division created successfully!')
+      setShowDivisionForm(false)
+      setDivisionForm({ name: '', class_id: '' })
+      loadAllData()
+    } catch (error) {
+      const errorMsg = error.response?.data?.detail || error.message || 'Failed to create division'
       showMessage('error', errorMsg)
     }
   }
@@ -280,13 +324,21 @@ function AdminDashboard({ user, onLogout }) {
                   <form onSubmit={handleCreateDepartment} className="form-box">
                     <div className="form-group">
                       <label>Department Name</label>
-                      <input type="text" required value={deptForm.name} 
-                        onChange={(e) => setDeptForm({...deptForm, name: e.target.value})} />
+                      <input
+                        type="text"
+                        required
+                        value={deptForm.name}
+                        onChange={(e) => setDeptForm({ ...deptForm, name: e.target.value })}
+                      />
                     </div>
                     <div className="form-group">
                       <label>Department Code</label>
-                      <input type="text" required value={deptForm.code}
-                        onChange={(e) => setDeptForm({...deptForm, code: e.target.value})} />
+                      <input
+                        type="text"
+                        required
+                        value={deptForm.code}
+                        onChange={(e) => setDeptForm({ ...deptForm, code: e.target.value })}
+                      />
                     </div>
                     <button type="submit" className="btn btn-success">Create</button>
                     <button type="button" className="btn btn-secondary" onClick={() => setShowDeptForm(false)}>Cancel</button>
@@ -303,13 +355,13 @@ function AdminDashboard({ user, onLogout }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {departments.map(dept => (
+                    {departments.map((dept) => (
                       <tr key={dept.id}>
                         <td>{dept.id}</td>
                         <td>{dept.name}</td>
                         <td>{dept.code}</td>
                         <td>
-                          <button 
+                          <button
                             className="btn btn-danger btn-sm"
                             onClick={async () => {
                               if (window.confirm(`Delete department "${dept.name}"? This cannot be undone.`)) {
@@ -329,6 +381,206 @@ function AdminDashboard({ user, onLogout }) {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activeSubTab === 'classes' && (
+              <div className="card">
+                <div className="card-header">
+                  <div>
+                    <h3>Classes</h3>
+                    <p className="text-muted">Total classes: {classes.length}</p>
+                  </div>
+                  <button className="btn btn-primary" onClick={() => setShowClassForm(!showClassForm)}>
+                    + Add Class
+                  </button>
+                </div>
+
+                {showClassForm && (
+                  <form onSubmit={handleCreateClass} className="form-box">
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Class Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={classForm.name}
+                          onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
+                          placeholder="1K"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Department *</label>
+                        <select
+                          required
+                          value={classForm.department_id}
+                          onChange={(e) => setClassForm({ ...classForm, department_id: e.target.value })}
+                        >
+                          <option value="">Select Department</option>
+                          {departments.map((dept) => (
+                            <option key={dept.id} value={dept.id}>
+                              {dept.name} ({dept.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-actions">
+                      <button type="submit" className="btn btn-success">✅ Create Class</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowClassForm(false)}>Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Class</th>
+                      <th>Department</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classes.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="text-muted">No classes yet. Add one above.</td>
+                      </tr>
+                    ) : (
+                      classes.map((cls) => {
+                        const dept = departments.find((item) => item.id === cls.department_id)
+                        return (
+                          <tr key={cls.id}>
+                            <td>{cls.id}</td>
+                            <td>{cls.name}</td>
+                            <td>{dept ? `${dept.name} (${dept.code})` : `Department ${cls.department_id}`}</td>
+                            <td>
+                              <button
+                                className="btn btn-danger btn-sm"
+                                onClick={async () => {
+                                  if (window.confirm(`Delete class "${cls.name}"? This will also remove linked divisions and subjects.`)) {
+                                    try {
+                                      await adminAPI.deleteClass(cls.id)
+                                      showMessage('success', 'Class deleted successfully!')
+                                      loadAllData()
+                                    } catch (error) {
+                                      const errorMsg = error.response?.data?.detail || 'Failed to delete class'
+                                      showMessage('error', errorMsg)
+                                    }
+                                  }
+                                }}
+                              >
+                                🗑️ Delete
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activeSubTab === 'divisions' && (
+              <div className="card">
+                <div className="card-header">
+                  <div>
+                    <h3>Divisions</h3>
+                    <p className="text-muted">Total divisions: {divisions.length}</p>
+                  </div>
+                  <button className="btn btn-primary" onClick={() => setShowDivisionForm(!showDivisionForm)}>
+                    + Add Division
+                  </button>
+                </div>
+
+                {showDivisionForm && (
+                  <form onSubmit={handleCreateDivision} className="form-box">
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Division Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={divisionForm.name}
+                          onChange={(e) => setDivisionForm({ ...divisionForm, name: e.target.value })}
+                          placeholder="A"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Class *</label>
+                        <select
+                          required
+                          value={divisionForm.class_id}
+                          onChange={(e) => setDivisionForm({ ...divisionForm, class_id: e.target.value })}
+                        >
+                          <option value="">Select Class</option>
+                          {classes.map((cls) => (
+                            <option key={cls.id} value={cls.id}>
+                              {cls.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-actions">
+                      <button type="submit" className="btn btn-success">✅ Create Division</button>
+                      <button type="button" className="btn btn-secondary" onClick={() => setShowDivisionForm(false)}>Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Division</th>
+                      <th>Class</th>
+                      <th>Department</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {divisions.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="text-muted">No divisions yet. Add one above.</td>
+                      </tr>
+                    ) : (
+                      divisions.map((division) => {
+                        const cls = classes.find((item) => item.id === division.class_id)
+                        const dept = cls ? departments.find((item) => item.id === cls.department_id) : null
+                        const departmentLabel = dept ? `${dept.name} (${dept.code})` : (cls ? `Department ${cls.department_id}` : '—')
+                        return (
+                          <tr key={division.id}>
+                            <td>{division.id}</td>
+                            <td>{division.name}</td>
+                            <td>{cls ? cls.name : `Class ${division.class_id}`}</td>
+                            <td>{departmentLabel}</td>
+                            <td>
+                              <button
+                                className="btn btn-danger btn-sm"
+                                onClick={async () => {
+                                  if (window.confirm(`Delete division "${division.name}"? This will remove linked batches and students.`)) {
+                                    try {
+                                      await adminAPI.deleteDivision(division.id)
+                                      showMessage('success', 'Division deleted successfully!')
+                                      loadAllData()
+                                    } catch (error) {
+                                      const errorMsg = error.response?.data?.detail || 'Failed to delete division'
+                                      showMessage('error', errorMsg)
+                                    }
+                                  }
+                                }}
+                              >
+                                🗑️ Delete
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -787,14 +1039,32 @@ function AdminDashboard({ user, onLogout }) {
                       <th>Relation</th>
                       <th>Phone</th>
                       <th>Student (Ward)</th>
-                      <th>Username</th>
+                      {hasParentUsername && <th>Username</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Parents data would be loaded here */}
-                    <tr>
-                      <td colSpan="5" className="text-muted">No parent accounts yet. Create one above.</td>
-                    </tr>
+                    {parents.length === 0 ? (
+                      <tr>
+                        <td colSpan={hasParentUsername ? 5 : 4} className="text-muted">No parent accounts yet. Create one above.</td>
+                      </tr>
+                    ) : (
+                      parents.map(parent => {
+                        const student = students.find((item) => item.id === parent.student_id)
+                        return (
+                          <tr key={parent.id}>
+                            <td>{parent.first_name} {parent.last_name}</td>
+                            <td>{parent.relation}</td>
+                            <td>{parent.phone}</td>
+                            <td>
+                              {student
+                                ? `${student.roll_number} - ${student.first_name} ${student.last_name}`
+                                : `Student ID ${parent.student_id}`}
+                            </td>
+                            {hasParentUsername && <td>{parent.username || '-'}</td>}
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
