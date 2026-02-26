@@ -35,7 +35,15 @@ class Staff(Base):
     class_ = relationship("Class", foreign_keys=[class_id])
     division = relationship("Division", foreign_keys=[division_id])
     timetable_sessions = relationship("TimetableSession", back_populates="staff")
+    
+    # Legacy lecture-based attendance
     attendance_sessions = relationship("AttendanceSession", back_populates="staff")
+    
+    # NEW: Day-wise attendance - Staff who mark/edit attendance and approve leaves
+    # Note: Using string references to avoid circular imports
+    marked_attendance = relationship("DailyAttendance", foreign_keys="DailyAttendance.marked_by")
+    edited_attendance = relationship("DailyAttendance", foreign_keys="DailyAttendance.edited_by")
+    approved_leaves = relationship("LeaveRequest", back_populates="approver")
     
     def __repr__(self):
         return f"<Staff(id={self.id}, staff_id='{self.staff_id}', name='{self.first_name} {self.last_name}')>"

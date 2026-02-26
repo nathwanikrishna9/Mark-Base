@@ -11,7 +11,7 @@ from datetime import date
 from app.core.database import get_db
 from app.models import (
     User, Department, Class, Division, Batch, Subject,
-    Staff, Student, Parent
+    Staff, Student, Parent, TimetableSession
 )
 from app.utils.security import get_password_hash
 
@@ -57,12 +57,6 @@ class CreateStaffRequest(BaseModel):
     department_id: int
     class_id: Optional[int] = None
     division_id: Optional[int] = None
-    class_id: Optional[int] = None
-    division_id: Optional[int] = None
-    class_id: Optional[int] = None
-    division_id: Optional[int] = None
-    class_id: Optional[int] = None
-    division_id: Optional[int] = None
 
 
 class CreateStudentRequest(BaseModel):
@@ -73,9 +67,9 @@ class CreateStudentRequest(BaseModel):
     last_name: str
     email: Optional[str] = None
     phone: Optional[str] = None
-    department_id: int  # Added department field
-    class_id: int  # Added class field (1K-6K)
-    division_id: int  # Division field (A or B)
+    department_id: int 
+    class_id: int  
+    division_id: int  
     batch_id: Optional[int] = None
     date_of_birth: Optional[date] = None
     enrollment_year: Optional[int] = None
@@ -92,95 +86,169 @@ class CreateParentRequest(BaseModel):
     relation: str
 
 
-# Department Endpoints
+# ==================== DEPARTMENT ENDPOINTS ====================
+@router.get("/departments")
+def get_departments(db: Session = Depends(get_db)):
+    """Get all departments."""
+    departments = db.query(Department).all()
+    return departments
+
+
 @router.post("/departments")
 def create_department(request: CreateDepartmentRequest, db: Session = Depends(get_db)):
     """Create a new department."""
-    # Check if department code already exists
+    # Check if department with same code already exists
     existing = db.query(Department).filter(Department.code == request.code).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Department code '{request.code}' already exists. Please use a different code."
+            detail="Department with this code already exists"
         )
     
-    department = Department(name=request.name, code=request.code)
+    department = Department(
+        name=request.name,
+        code=request.code
+    )
     db.add(department)
     db.commit()
     db.refresh(department)
+    
     return department
 
 
-@router.get("/departments")
-def get_departments(db: Session = Depends(get_db)):
-    """Get all departments."""
-    return db.query(Department).all()
-
-
-# Class Endpoints
-@router.post("/classes")
-def create_class(request: CreateClassRequest, db: Session = Depends(get_db)):
-    """Create a new class."""
-    class_obj = Class(name=request.name, department_id=request.department_id)
-    db.add(class_obj)
-    db.commit()
-    db.refresh(class_obj)
-    return class_obj
-
-
+# ==================== CLASS ENDPOINTS ====================
 @router.get("/classes")
 def get_classes(department_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Get all classes, optionally filtered by department."""
     query = db.query(Class)
     if department_id:
         query = query.filter(Class.department_id == department_id)
-    return query.all()
+    classes = query.all()
+    return classes
 
 
-# Division Endpoints
-@router.post("/divisions")
-def create_division(request: CreateDivisionRequest, db: Session = Depends(get_db)):
-    """Create a new division."""
-    division = Division(name=request.name, class_id=request.class_id)
-    db.add(division)
+@router.post("/classes")
+def create_class(request: CreateClassRequest, db: Session = Depends(get_db)):
+    """Create a new class."""
+    # Validate department exists
+    department = db.query(Department).filter(Department.id == request.department_id).first()
+    if not department:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Department not found"
+        )
+    
+    class_obj = Class(
+        name=request.name,
+        department_id=request.department_id
+    )
+    db.add(class_obj)
     db.commit()
-    db.refresh(division)
-    return division
+    db.refresh(class_obj)
+    
+    return class_obj
 
 
+# ==================== DIVISION ENDPOINTS ====================
 @router.get("/divisions")
 def get_divisions(class_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Get all divisions, optionally filtered by class."""
     query = db.query(Division)
     if class_id:
         query = query.filter(Division.class_id == class_id)
-    return query.all()
+    divisions = query.all()
+    print(divisions)
+    return divisions
 
 
-# Batch Endpoints
-@router.post("/batches")
-def create_batch(request: CreateBatchRequest, db: Session = Depends(get_db)):
-    """Create a new batch."""
-    batch = Batch(name=request.name, division_id=request.division_id)
-    db.add(batch)
+@router.post("/divisions")
+def create_division(request: CreateDivisionRequest, db: Session = Depends(get_db)):
+    """Create a new division."""
+    # Validate class exists
+    class_obj = db.query(Class).filter(Class.id == request.class_id).first()
+    if not class_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Class not found"
+        )
+    
+    division = Division(
+        name=request.name,
+        class_id=request.class_id
+    )
+    db.add(division)
     db.commit()
-    db.refresh(batch)
-    return batch
+    db.refresh(division)
+    
+    return division
 
 
+# ==================== BATCH ENDPOINTS ====================
 @router.get("/batches")
 def get_batches(division_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Get all batches, optionally filtered by division."""
     query = db.query(Batch)
     if division_id:
         query = query.filter(Batch.division_id == division_id)
-    return query.all()
+    batches = query.all()
+    return batches
 
 
-# Subject Endpoints
+@router.post("/batches")
+def create_batch(request: CreateBatchRequest, db: Session = Depends(get_db)):
+    """Create a new batch."""
+    # Validate division exists
+    division = db.query(Division).filter(Division.id == request.division_id).first()
+    if not division:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Division not found"
+        )
+    
+    batch = Batch(
+        name=request.name,
+        division_id=request.division_id
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    
+    return batch
+
+
+# ==================== SUBJECT ENDPOINTS ====================
+@router.get("/subjects")
+def get_subjects(class_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Get all subjects, optionally filtered by class."""
+    query = db.query(Subject)
+    if class_id:
+        query = query.filter(Subject.class_id == class_id)
+    subjects = query.all()
+    return subjects
+
+
 @router.post("/subjects")
 def create_subject(request: CreateSubjectRequest, db: Session = Depends(get_db)):
     """Create a new subject."""
+    # Validate class exists
+    class_obj = db.query(Class).filter(Class.id == request.class_id).first()
+    if not class_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Class not found"
+        )
+    
+    # Check if subject with same code already exists for this class
+    existing = db.query(Subject).filter(
+        Subject.code == request.code,
+        Subject.class_id == request.class_id
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Subject with this code already exists for this class"
+        )
+    
     subject = Subject(
         name=request.name,
         code=request.code,
@@ -189,22 +257,73 @@ def create_subject(request: CreateSubjectRequest, db: Session = Depends(get_db))
     db.add(subject)
     db.commit()
     db.refresh(subject)
+    
     return subject
 
 
-@router.get("/subjects")
-def get_subjects(class_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Get all subjects, optionally filtered by class."""
-    query = db.query(Subject)
-    if class_id:
-        query = query.filter(Subject.class_id == class_id)
-    return query.all()
+# ==================== STAFF ENDPOINTS ====================
+@router.get("/staff")
+def get_staff(department_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Get all staff members, optionally filtered by department."""
+    query = db.query(Staff)
+    if department_id:
+        query = query.filter(Staff.department_id == department_id)
+    staff = query.all()
+    return staff
 
 
-# Staff Endpoints
 @router.post("/staff")
+
+
+@router.get("/staff/{staff_id}")
+def get_staff_by_id(staff_id: int, db: Session = Depends(get_db)):
+    """Get a specific staff member by ID with division info."""
+    staff = db.query(Staff).filter(Staff.id == staff_id).first()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    
+    # Get division and class info if assigned
+    division_name = None
+    class_name = None
+    if staff.division_id:
+        division = db.query(Division).filter(Division.id == staff.division_id).first()
+        if division:
+            division_name = division.name
+            class_obj = db.query(Class).filter(Class.id == division.class_id).first()
+            if class_obj:
+                class_name = class_obj.name
+    
+    return {
+        "id": staff.id,
+        "staff_id": staff.staff_id,
+        "first_name": staff.first_name,
+        "last_name": staff.last_name,
+        "email": staff.email,
+        "phone": staff.phone,
+        "department_id": staff.department_id,
+        "division_id": staff.division_id,
+        "division_name": division_name,
+        "class_name": class_name,
+        "username": staff.username
+    }
 def create_staff(request: CreateStaffRequest, db: Session = Depends(get_db)):
-    """Create a new staff member with optional class teacher assignment."""
+    """Create a new staff member."""
+    # Validate department exists
+    department = db.query(Department).filter(Department.id == request.department_id).first()
+    if not department:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Department not found"
+        )
+    
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == request.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists"
+        )
+    
     # Create user account
     user = User(
         username=request.username,
@@ -233,16 +352,27 @@ def create_staff(request: CreateStaffRequest, db: Session = Depends(get_db)):
     return staff
 
 
-@router.get("/staff")
-def get_staff(department_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Get all staff members."""
-    query = db.query(Staff)
-    if department_id:
-        query = query.filter(Staff.department_id == department_id)
-    return query.all()
+# ==================== STUDENT ENDPOINTS ====================
+@router.get("/students")
+def get_students(
+    division_id: Optional[int] = None,
+    class_id: Optional[int] = None,
+    department_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Get all students, optionally filtered by division, class, or department."""
+    query = db.query(Student)
+    if division_id:
+        query = query.filter(Student.division_id == division_id)
+    elif class_id:
+        query = query.join(Division).filter(Division.class_id == class_id)
+    elif department_id:
+        query = query.join(Division).join(Class).filter(Class.department_id == department_id)
+    
+    students = query.all()
+    return students
 
 
-# Student Endpoints
 @router.post("/students")
 def create_student(request: CreateStudentRequest, db: Session = Depends(get_db)):
     """Create a new student (face registration happens on first login)."""
@@ -274,10 +404,18 @@ def create_student(request: CreateStudentRequest, db: Session = Depends(get_db))
             detail="Division not found or does not belong to specified class"
         )
     
-    # Create user account (no password for students)
+    # Check if username already exists to prevent integrity errors
+    existing_user = db.query(User).filter(User.username == request.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists"
+        )
+
+    # Create user account (Students use face recognition, but DB may require a password_hash)
     user = User(
         username=request.username,
-        password_hash=None,  # Students use face recognition only
+        password_hash="FACE_AUTH_ONLY", # Placeholder if column is NOT NULL
         role="student"
     )
     db.add(user)
@@ -305,25 +443,36 @@ def create_student(request: CreateStudentRequest, db: Session = Depends(get_db))
     return student
 
 
-@router.get("/students")
-def get_students(
-    division_id: Optional[int] = None,
-    batch_id: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    """Get all students."""
-    query = db.query(Student)
-    if division_id:
-        query = query.filter(Student.division_id == division_id)
-    if batch_id:
-        query = query.filter(Student.batch_id == batch_id)
-    return query.all()
+# ==================== PARENT ENDPOINTS ====================
+@router.get("/parents")
+def get_parents(student_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Get all parents, optionally filtered by student."""
+    query = db.query(Parent)
+    if student_id:
+        query = query.filter(Parent.student_id == student_id)
+    parents = query.all()
+    return parents
 
 
-# Parent Endpoints
 @router.post("/parents")
 def create_parent(request: CreateParentRequest, db: Session = Depends(get_db)):
-    """Create a new parent account linked to a student."""
+    """Create a new parent account."""
+    # Validate student exists
+    student = db.query(Student).filter(Student.id == request.student_id).first()
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found"
+        )
+    
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == request.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists"
+        )
+    
     # Create user account
     user = User(
         username=request.username,
@@ -350,23 +499,11 @@ def create_parent(request: CreateParentRequest, db: Session = Depends(get_db)):
     return parent
 
 
-@router.get("/parents")
-def get_parents(student_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Get all parents."""
-    query = db.query(Parent)
-    if student_id:
-        query = query.filter(Parent.student_id == student_id)
-    return query.all()
+# ==================== DELETE ENDPOINTS ====================
 
-
-# Seed/Initialize Academic Structure
-@router.post("/initialize-structure")
-def initialize_academic_structure(department_id: int, db: Session = Depends(get_db)):
-    """
-    Initialize classes (1K-6K) and divisions (A, B) for a department.
-    This creates the standard academic structure.
-    """
-    # Check if department exists
+@router.delete("/departments/{department_id}")
+def delete_department(department_id: int, db: Session = Depends(get_db)):
+    """Delete a department and all related data."""
     department = db.query(Department).filter(Department.id == department_id).first()
     if not department:
         raise HTTPException(
@@ -374,246 +511,183 @@ def initialize_academic_structure(department_id: int, db: Session = Depends(get_
             detail="Department not found"
         )
     
-    created_classes = []
-    created_divisions = []
+    try:
+        db.delete(department)
+        db.commit()
+        return {"message": "Department deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete department: {str(e)}"
+        )
+
+
+@router.delete("/classes/{class_id}")
+def delete_class(class_id: int, db: Session = Depends(get_db)):
+    """Delete a class and all related data."""
+    class_obj = db.query(Class).filter(Class.id == class_id).first()
+    if not class_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Class not found"
+        )
     
-    # Create classes 1K-6K
-    class_names = ["1K", "2K", "3K", "4K", "5K", "6K"]
-    for class_name in class_names:
-        # Check if class already exists
-        existing_class = db.query(Class).filter(
-            Class.name == class_name,
-            Class.department_id == department_id
-        ).first()
+    try:
+        # Check if there are students in any division of this class
+        divisions = db.query(Division).filter(Division.class_id == class_id).all()
+        student_count = 0
+        for div in divisions:
+            count = db.query(Student).filter(Student.division_id == div.id).count()
+            student_count += count
         
-        if not existing_class:
-            new_class = Class(name=class_name, department_id=department_id)
-            db.add(new_class)
-            db.flush()
-            created_classes.append(new_class)
-        else:
-            created_classes.append(existing_class)
-    
-    # Create divisions A and B for each class
-    division_names = ["A", "B"]
-    for cls in created_classes:
-        for div_name in division_names:
-            # Check if division already exists
-            existing_div = db.query(Division).filter(
-                Division.name == div_name,
-                Division.class_id == cls.id
-            ).first()
-            
-            if not existing_div:
-                new_division = Division(name=div_name, class_id=cls.id)
-                db.add(new_division)
-                db.flush()
-                created_divisions.append(new_division)
-            else:
-                created_divisions.append(existing_div)
-    
-    db.commit()
-    
-    return {
-        "message": f"Academic structure initialized for {department.name}",
-        "classes_created": len([c for c in created_classes]),
-        "divisions_created": len([d for d in created_divisions]),
-        "class_names": class_names,
-        "division_names": division_names
-    }
+        if student_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete class: {student_count} student(s) are enrolled in this class. Please delete or reassign students first."
+            )
+        
+        # Delete the class (cascades to divisions, subjects, etc.)
+        db.delete(class_obj)
+        db.commit()
+        return {"message": "Class deleted successfully"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete class: {str(e)}"
+        )
 
 
-# Delete Endpoints
+@router.delete("/divisions/{division_id}")
+def delete_division(division_id: int, db: Session = Depends(get_db)):
+    """Delete a division and all related data."""
+    division = db.query(Division).filter(Division.id == division_id).first()
+    if not division:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Division not found"
+        )
+    
+    try:
+        # Check if there are students in this division
+        student_count = db.query(Student).filter(Student.division_id == division_id).count()
+        
+        if student_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete division: {student_count} student(s) are enrolled. Please delete or reassign students first."
+            )
+        
+        # Delete the division (cascades to batches, timetable sessions, etc.)
+        db.delete(division)
+        db.commit()
+        return {"message": "Division deleted successfully"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete division: {str(e)}"
+        )
+
+
 @router.delete("/students/{student_id}")
 def delete_student(student_id: int, db: Session = Depends(get_db)):
-    """Delete a student account (cascades to user and attendance records)."""
+    """Delete a student and all related data."""
     student = db.query(Student).filter(Student.id == student_id).first()
-    
     if not student:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Student not found"
         )
     
-    # Get student name before deletion
-    student_name = f"{student.first_name} {student.last_name}"
-    
-    # Delete will cascade to user and attendance records due to foreign key constraints
-    db.delete(student)
-    db.commit()
-    
-    return {
-        "message": f"Student {student_name} deleted successfully",
-        "deleted_student_id": student_id
-    }
+    try:
+        # Delete associated user account
+        if student.user_id:
+            user = db.query(User).filter(User.id == student.user_id).first()
+            if user:
+                db.delete(user)
+        
+        db.delete(student)
+        db.commit()
+        return {"message": "Student deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete student: {str(e)}"
+        )
 
 
 @router.delete("/staff/{staff_id}")
 def delete_staff(staff_id: int, db: Session = Depends(get_db)):
-    """Delete a staff account (cascades to user)."""
+    """Delete a staff member and all related data."""
     staff = db.query(Staff).filter(Staff.id == staff_id).first()
-    
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Staff not found"
         )
     
-    # Get staff name before deletion
-    staff_name = f"{staff.first_name} {staff.last_name}"
-    
-    # Delete will cascade to user
-    db.delete(staff)
-    db.commit()
-    
-    return {
-        "message": f"Staff {staff_name} deleted successfully",
-        "deleted_staff_id": staff_id
-    }
+    try:
+        # Check if staff has timetable sessions assigned
+        session_count = db.query(TimetableSession).filter(TimetableSession.staff_id == staff_id).count()
+        
+        if session_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete staff: {session_count} timetable session(s) are assigned to this staff member. Please reassign or delete the sessions first."
+            )
+        
+        # Delete associated user account
+        if staff.user_id:
+            user = db.query(User).filter(User.id == staff.user_id).first()
+            if user:
+                db.delete(user)
+        
+        db.delete(staff)
+        db.commit()
+        return {"message": "Staff deleted successfully"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete staff: {str(e)}"
+        )
 
 
 @router.delete("/parents/{parent_id}")
 def delete_parent(parent_id: int, db: Session = Depends(get_db)):
-    """Delete a parent account (cascades to user)."""
+    """Delete a parent and all related data."""
     parent = db.query(Parent).filter(Parent.id == parent_id).first()
-    
     if not parent:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Parent not found"
         )
     
-    # Get parent name before deletion
-    parent_name = f"{parent.first_name} {parent.last_name}"
-    
-    # Delete will cascade to user
-    db.delete(parent)
-    db.commit()
-    
-    return {
-        "message": f"Parent {parent_name} deleted successfully",
-        "deleted_parent_id": parent_id
-    }
-
-
-@router.delete("/departments/{department_id}")
-def delete_department(department_id: int, db: Session = Depends(get_db)):
-    """Delete a department (only if no classes/staff are linked to it)."""
-    department = db.query(Department).filter(Department.id == department_id).first()
-    
-    if not department:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Department not found"
-        )
-    
-    # Check if department has classes
-    classes_count = db.query(Class).filter(Class.department_id == department_id).count()
-    if classes_count > 0:
+    try:
+        # Delete associated user account
+        if parent.user_id:
+            user = db.query(User).filter(User.id == parent.user_id).first()
+            if user:
+                db.delete(user)
+        
+        db.delete(parent)
+        db.commit()
+        return {"message": "Parent deleted successfully"}
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete department. It has {classes_count} classes linked to it."
+            detail=f"Cannot delete parent: {str(e)}"
         )
-    
-    # Check if department has staff
-    staff_count = db.query(Staff).filter(Staff.department_id == department_id).count()
-    if staff_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete department. It has {staff_count} staff members linked to it."
-        )
-    
-    # Get department name before deletion
-    dept_name = f"{department.name} ({department.code})"
-    
-    db.delete(department)
-    db.commit()
-    
-    return {
-        "message": f"Department {dept_name} deleted successfully",
-        "deleted_department_id": department_id
-    }
-
-
-@router.delete("/departments/{department_id}")
-def delete_department(department_id: int, db: Session = Depends(get_db)):
-    """Delete a department (only if no classes/staff are linked to it)."""
-    department = db.query(Department).filter(Department.id == department_id).first()
-    
-    if not department:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Department not found"
-        )
-    
-    # Check if department has classes
-    classes_count = db.query(Class).filter(Class.department_id == department_id).count()
-    if classes_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete department. It has {classes_count} classes linked to it."
-        )
-    
-    # Check if department has staff
-    staff_count = db.query(Staff).filter(Staff.department_id == department_id).count()
-    if staff_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete department. It has {staff_count} staff members linked to it."
-        )
-    
-    # Get department name before deletion
-    dept_name = f"{department.name} ({department.code})"
-    
-    db.delete(department)
-    db.commit()
-    
-    return {
-        "message": f"Department {dept_name} deleted successfully",
-        "deleted_department_id": department_id
-    }
-
-
-# Attendance Edit Endpoint
-class EditAttendanceRequest(BaseModel):
-    status: str  # 'present', 'late', or 'absent'
-
-
-@router.put("/attendance/{record_id}")
-def edit_attendance_status(
-    record_id: int,
-    request: EditAttendanceRequest,
-    admin_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Edit attendance status for a record.
-    
-    Admin can change status to: present, late, or absent
-    Only allows editing records from today.
-    """
-    from app.services.attendance_service import AttendanceService
-    
-    # Validate status
-    if request.status not in ['present', 'late', 'absent']:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid status. Must be 'present', 'late', or 'absent'"
-        )
-    
-    # Use the existing admin_edit_attendance service
-    success = AttendanceService.admin_edit_attendance(
-        db, record_id, request.status, admin_id
-    )
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot edit attendance record. It may not exist or is from a previous day."
-        )
-    
-    return {
-        "message": "Attendance status updated successfully",
-        "record_id": record_id,
-        "new_status": request.status.upper()
-    }

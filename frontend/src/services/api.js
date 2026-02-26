@@ -387,4 +387,113 @@ export const timetableAPI = {
   },
 }
 
+
+// ===========================
+// Day-wise Attendance APIs (NEW)
+// ===========================
+
+export const daywiseAttendanceAPI = {
+  // Mark attendance for a student (with face or manual)
+  markAttendance: async (data) => {
+    const response = await api.post('/api/attendance/daywise/mark', data)
+    return response.data
+  },
+
+  // Mark attendance with face recognition
+  markAttendanceWithFace: async (studentId, imageFile) => {
+    const formData = new FormData()
+    formData.append('image', imageFile)
+    
+    const response = await api.post(`/api/attendance/daywise/mark-face/${studentId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
+  // Bulk mark for entire division
+  bulkMarkDivision: async (divisionId, markedBy, method = 'manual') => {
+    const response = await api.post('/api/attendance/daywise/bulk-mark', {
+      division_id: divisionId,
+      marked_by_staff_id: markedBy,
+      method: method
+    })
+    return response.data
+  },
+
+  // Get attendance for a student
+  getStudentAttendance: async (studentId, startDate = null, endDate = null) => {
+    const response = await api.get(`/api/attendance/daywise/student/${studentId}`, {
+      params: { start_date: startDate, end_date: endDate }
+    })
+    return response.data
+  },
+
+  // Get attendance for a division
+  getDivisionAttendance: async (divisionId, date = null) => {
+    const response = await api.get(`/api/attendance/daywise/division/${divisionId}`, {
+      params: { date: date }
+    })
+    return response.data
+  },
+
+  // Get attendance summary
+  getAttendanceSummary: async (studentId, startDate = null, endDate = null) => {
+    const response = await api.get(`/api/attendance/daywise/summary/${studentId}`, {
+      params: { start_date: startDate, end_date: endDate }
+    })
+    return response.data
+  },
+
+  // Get or create grace period
+  getGracePeriod: async (divisionId = null) => {
+    const response = await api.get('/api/attendance/daywise/grace-period', {
+      params: { division_id: divisionId }
+    })
+    return response.data
+  },
+
+  // Update grace period
+  updateGracePeriod: async (gracePeriodId, data) => {
+    const response = await api.put(`/api/attendance/daywise/grace-period/${gracePeriodId}`, data)
+    return response.data
+  },
+
+  // Leave Requests
+  createLeaveRequest: async (data) => {
+    const response = await api.post('/api/attendance/daywise/leave-request', data)
+    return response.data
+  },
+
+  getStudentLeaves: async (studentId, status = null) => {
+    const response = await api.get(`/api/attendance/daywise/leave-requests/student/${studentId}`, {
+      params: { status: status }
+    })
+    return response.data
+  },
+
+  getPendingLeaves: async (divisionId = null) => {
+    const response = await api.get('/api/attendance/daywise/leave-requests/pending', {
+      params: { division_id: divisionId }
+    })
+    return response.data
+  },
+
+  approveLeave: async (leaveId, approvedBy) => {
+    const response = await api.put(`/api/attendance/daywise/leave-request/${leaveId}/approve`, {
+      approved_by_staff_id: approvedBy
+    })
+    return response.data
+  },
+
+  rejectLeave: async (leaveId, rejectedBy, reason = null) => {
+    const response = await api.put(`/api/attendance/daywise/leave-request/${leaveId}/reject`, {
+      rejected_by_staff_id: rejectedBy,
+      rejection_reason: reason
+    })
+    return response.data
+  },
+}
+
 export default api
+
+

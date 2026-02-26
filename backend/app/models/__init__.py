@@ -13,7 +13,13 @@ from .staff import Staff
 from .student import Student
 from .parent import Parent
 from .timetable import TimetableSession
-from .attendance import AttendanceSession, AttendanceRecord
+from .attendance import (
+    AttendanceSession, 
+    AttendanceRecord,
+    DailyAttendance,
+    GracePeriod,
+    LeaveRequest
+)
 
 __all__ = [
     "User",
@@ -26,6 +32,11 @@ __all__ = [
     "Student",
     "Parent",
     "TimetableSession",
+    # Legacy lecture-based
     "AttendanceSession",
     "AttendanceRecord",
+    # NEW: Day-wise attendance
+    "DailyAttendance",
+    "GracePeriod",
+    "LeaveRequest",
 ]

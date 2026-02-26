@@ -97,3 +97,53 @@ def get_division_timetable(
 def get_staff_timetable(staff_id: int, db: Session = Depends(get_db)):
     """Get weekly timetable for staff."""
     return TimetableService.get_weekly_timetable_for_staff(db, staff_id)
+
+
+@router.delete("/sessions/{session_id}")
+def delete_timetable_session(session_id: int, db: Session = Depends(get_db)):
+    """Delete a timetable session."""
+    session = db.query(TimetableSession).filter(TimetableSession.id == session_id).first()
+    
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Timetable session not found"
+        )
+    
+    try:
+        db.delete(session)
+        db.commit()
+        return {"message": "Timetable session deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete session: {str(e)}"
+        )
+
+
+@router.get("/sessions")
+def get_all_timetable_sessions(db: Session = Depends(get_db)):
+    """Get all timetable sessions with details."""
+    sessions = db.query(TimetableSession).all()
+    
+    return [
+        {
+            "id": s.id,
+            "division_id": s.division_id,
+            "division": f"{s.division.class_obj.name} {s.division.name}",
+            "batch_id": s.batch_id,
+            "batch": s.batch.name if s.batch_id else None,
+            "subject_id": s.subject_id,
+            "subject": s.subject.name,
+            "staff_id": s.staff_id,
+            "staff": f"{s.staff.first_name} {s.staff.last_name}",
+            "day_of_week": s.day_of_week,
+            "day": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][s.day_of_week],
+            "start_time": str(s.start_time),
+            "end_time": str(s.end_time),
+            "session_type": s.session_type,
+            "room_number": s.room_number
+        }
+        for s in sessions
+    ]

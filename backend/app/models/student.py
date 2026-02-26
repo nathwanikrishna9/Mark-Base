@@ -36,7 +36,13 @@ class Student(Base):
     division = relationship("Division", back_populates="students")
     batch = relationship("Batch", back_populates="students")
     parents = relationship("Parent", back_populates="student")
+    
+    # Legacy lecture-based attendance
     attendance_records = relationship("AttendanceRecord", back_populates="student")
+    
+    # NEW: Day-wise attendance
+    daily_attendance = relationship("DailyAttendance", back_populates="student", cascade="all, delete-orphan")
+    leave_requests = relationship("LeaveRequest", back_populates="student", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Student(id={self.id}, roll='{self.roll_number}', name='{self.first_name} {self.last_name}')>"

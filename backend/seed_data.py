@@ -104,7 +104,7 @@ def seed_database():
         ]
         
         staff_objects = []
-        for username, password, staff_id, first_name, last_name, email, dept_id in staff_data:
+        for username, password, staff_id, first_name, last_name, email, dept_id, div_id in staff_data:
             user = User(
                 username=username,
                 password_hash=get_password_hash(password),
@@ -134,17 +134,17 @@ def seed_database():
         print("\n📝 Creating students...")
         students_data = [
             # Division A
-            ("2023001", "Aarav", "Gupta", div_se_a.id, batch_a1.id),
-            ("2023002", "Vivaan", "Desai", div_se_a.id, batch_a1.id),
-            ("2023003", "Aditya", "Reddy", div_se_a.id, batch_a1.id),
-            ("2023004", "Vihaan", "Nair", div_se_a.id, batch_a2.id),
-            ("2023005", "Arjun", "Iyer", div_se_a.id, batch_a2.id),
-            ("2023006", "Sai", "Rao", div_se_a.id, batch_a2.id),
+            ("2023001", "Aarav", "Gupta", div_2k_a.id, None),
+            ("2023002", "Vivaan", "Desai", div_2k_a.id, None),
+            ("2023003", "Aditya", "Reddy", div_2k_a.id, None),
+            ("2023004", "Vihaan", "Nair", div_2k_a.id, None),
+            ("2023005", "Arjun", "Iyer", div_2k_a.id, None),
+            ("2023006", "Sai", "Rao", div_2k_a.id, None),
             # Division B
-            ("2023007", "Isha", "Verma", div_se_b.id, batch_b1.id),
-            ("2023008", "Ananya", "Joshi", div_se_b.id, batch_b1.id),
-            ("2023009", "Diya", "Mishra", div_se_b.id, batch_b1.id),
-            ("2023010", "Sara", "Khan", div_se_b.id, batch_b2.id),
+            ("2023007", "Isha", "Verma", div_2k_b.id, None),
+            ("2023008", "Ananya", "Joshi", div_2k_b.id, None),
+            ("2023009", "Diya", "Mishra", div_2k_b.id, None),
+            ("2023010", "Sara", "Khan", div_2k_b.id, None),
         ]
         
         student_objects = []
@@ -209,20 +209,20 @@ def seed_database():
         # Division A - Monday
         timetable_data = [
             # Monday - Division A
-            (div_se_a.id, None, subjects[0].id, staff_objects[0].id, 0, time(9, 0), time(10, 0), "theory", "101"),
-            (div_se_a.id, None, subjects[1].id, staff_objects[1].id, 0, time(10, 0), time(11, 0), "theory", "101"),
-            (div_se_a.id, None, subjects[2].id, staff_objects[2].id, 0, time(11, 15), time(12, 15), "theory", "101"),
-            (div_se_a.id, batch_a1.id, subjects[0].id, staff_objects[0].id, 0, time(14, 0), time(17, 0), "lab", "Lab1"),
+            (div_2k_a.id, None, subjects[0].id, staff_objects[0].id, 0, time(9, 0), time(10, 0), "theory", "101"),
+            (div_2k_a.id, None, subjects[1].id, staff_objects[1].id, 0, time(10, 0), time(11, 0), "theory", "101"),
+            (div_2k_a.id, None, subjects[2].id, staff_objects[2].id, 0, time(11, 15), time(12, 15), "theory", "101"),
+            (div_2k_a.id, None, subjects[0].id, staff_objects[0].id, 0, time(14, 0), time(17, 0), "lab", "Lab1"),
             
             # Tuesday - Division A
-            (div_se_a.id, None, subjects[3].id, staff_objects[3].id, 1, time(9, 0), time(10, 0), "theory", "101"),
-            (div_se_a.id, None, subjects[4].id, staff_objects[4].id, 1, time(10, 0), time(11, 0), "theory", "101"),
-            (div_se_a.id, batch_a2.id, subjects[1].id, staff_objects[1].id, 1, time(14, 0), time(17, 0), "lab", "Lab2"),
+            (div_2k_a.id, None, subjects[3].id, staff_objects[3].id, 1, time(9, 0), time(10, 0), "theory", "101"),
+            (div_2k_a.id, None, subjects[4].id, staff_objects[4].id, 1, time(10, 0), time(11, 0), "theory", "101"),
+            (div_2k_a.id, None, subjects[1].id, staff_objects[1].id, 1, time(14, 0), time(17, 0), "lab", "Lab2"),
             
             # Monday - Division B
-            (div_se_b.id, None, subjects[0].id, staff_objects[0].id, 0, time(10, 0), time(11, 0), "theory", "102"),
-            (div_se_b.id, None, subjects[1].id, staff_objects[1].id, 0, time(11, 15), time(12, 15), "theory", "102"),
-            (div_se_b.id, batch_b1.id, subjects[0].id, staff_objects[0].id, 0, time(14, 0), time(17, 0), "lab", "Lab3"),
+            (div_2k_b.id, None, subjects[0].id, staff_objects[0].id, 0, time(10, 0), time(11, 0), "theory", "102"),
+            (div_2k_b.id, None, subjects[1].id, staff_objects[1].id, 0, time(11, 15), time(12, 15), "theory", "102"),
+            (div_2k_b.id, None, subjects[0].id, staff_objects[0].id, 0, time(14, 0), time(17, 0), "lab", "Lab3"),
         ]
         
         for div_id, batch_id, subj_id, staff_id, day, start, end, stype, room in timetable_data:

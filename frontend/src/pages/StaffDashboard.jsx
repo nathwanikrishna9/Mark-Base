@@ -1,272 +1,339 @@
 /**
- * Staff Dashboard - Main interface for faculty members.
+ * Staff Dashboard - Day-wise Attendance Management
  * Features:
- * - View active sessions
- * - Open attendance sessions
- * - Mark student attendance with face recognition
- * - Close sessions
+ * - Turn On/Off attendance for assigned division
+ * - Mark attendance with face recognition
+ * - Manual attendance marking
+ * - View real-time attendance statistics
+ * - Grace period: 9:15 AM - 9:30 AM
  */
 
 import React, { useState, useEffect, useRef } from 'react'
 import Webcam from 'react-webcam'
-import { staffAPI } from '../services/api'
+import { staffAPI, daywiseAttendanceAPI } from '../services/api'
 import '../styles/dashboard.css'
 
 function StaffDashboard({ user, onLogout }) {
-  const [activeSessions, setActiveSessions] = useState([])
-  const [openSession, setOpenSession] = useState(null)
-  const [sessionStatus, setSessionStatus] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState({ type: '', text: '' })
+  const [division, setDivision] = useState(null)
+  const [students, setStudents] = useState([])
+  const [attendanceRecords, setAttendanceRecords] = useState([])
+  const [isAttendanceActive, setIsAttendanceActive] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
+  const [message, setMessage] = useState({ type: '', text: '' })
+  const [loading, setLoading] = useState(true)
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [stats, setStats] = useState({ present: 0, late: 0, absent: 0, unmarked: 0 })
   const webcamRef = useRef(null)
 
   useEffect(() => {
-    loadActiveSessions()
-    // Refresh active sessions every 30 seconds
-    const interval = setInterval(loadActiveSessions, 30000)
-    return () => clearInterval(interval)
+    loadStaffDivision()
   }, [])
 
   useEffect(() => {
-    if (openSession) {
-      loadSessionStatus()
-      const interval = setInterval(loadSessionStatus, 5000)
-      return () => clearInterval(interval)
+    if (division) {
+      loadStudents()
+      loadTodayAttendance()
     }
-  }, [openSession])
+  }, [division, selectedDate])
 
-  const loadActiveSessions = async () => {
+  const loadStaffDivision = async () => {
     try {
-      const sessions = await staffAPI.getActiveSessions(user.staff_id)
-      setActiveSessions(sessions)
+      // Get staff details to find their assigned class/division
+      const staffData = await staffAPI.getStaffById(user.staff_id)
+      if (staffData.division_id) {
+        setDivision({
+          id: staffData.division_id,
+          name: staffData.division_name,
+          class_name: staffData.class_name
+        })
+      } else {
+        setMessage({ type: 'error', text: 'You are not assigned to any class/division' })
+      }
     } catch (err) {
-      console.error('Failed to load sessions:', err)
-    }
-  }
-
-  const loadSessionStatus = async () => {
-    if (!openSession) return
-    try {
-      const status = await staffAPI.getSessionStatus(openSession.id)
-      setSessionStatus(status)
-    } catch (err) {
-      console.error('Failed to load session status:', err)
-    }
-  }
-
-  const handleOpenSession = async (timetableSessionId) => {
-    setLoading(true)
-    setMessage({ type: '', text: '' })
-
-    try {
-      const session = await staffAPI.openSession(timetableSessionId, user.staff_id)
-      setOpenSession({ id: session.attendance_session_id, ...session })
-      setMessage({ type: 'success', text: 'Attendance session opened successfully!' })
-      loadActiveSessions()
-    } catch (err) {
-      setMessage({ 
-        type: 'error', 
-        text: err.response?.data?.detail || 'Failed to open session' 
-      })
+      console.error('Failed to load staff division:', err)
+      setMessage({ type: 'error', text: 'Failed to load your assigned division' })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleMarkAttendance = async () => {
-    setLoading(true)
-    setMessage({ type: '', text: '' })
+  const loadStudents = async () => {
+    try {
+      const data = await staffAPI.getStudentsByDivision(division.id)
+      setStudents(data)
+    } catch (err) {
+      console.error('Failed to load students:', err)
+    }
+  }
+
+  const loadTodayAttendance = async () => {
+    try {
+      const data = await daywiseAttendanceAPI.getDivisionAttendance(division.id, selectedDate)
+      setAttendanceRecords(data.records || [])
+      calculateStats(data.records || [])
+    } catch (err) {
+      console.error('Failed to load attendance:', err)
+      setAttendanceRecords([])
+      calculateStats([])
+    }
+  }
+
+  const calculateStats = (records) => {
+    const stats = {
+      present: records.filter(r => r.status === 'present').length,
+      late: records.filter(r => r.status === 'late').length,
+      absent: records.filter(r => r.status === 'absent').length,
+      unmarked: records.filter(r => r.status === 'unmarked').length
+    }
+    setStats(stats)
+  }
+
+  const handleToggleAttendance = () => {
+    setIsAttendanceActive(!isAttendanceActive)
+    if (!isAttendanceActive) {
+      setMessage({ type: 'success', text: 'Attendance is now active. Students can mark their attendance.' })
+      setShowCamera(true)
+    } else {
+      setMessage({ type: 'info', text: 'Attendance has been turned off.' })
+      setShowCamera(false)
+    }
+  }
+
+  const handleMarkAttendanceWithFace = async () => {
+    if (!webcamRef.current) return
 
     try {
       const imageSrc = webcamRef.current.getScreenshot()
-      if (!imageSrc) {
-        setMessage({ type: 'error', text: 'Failed to capture image' })
-        setLoading(false)
-        return
-      }
-
       const blob = await fetch(imageSrc).then(r => r.blob())
-      const file = new File([blob], 'face.jpg', { type: 'image/jpeg' })
+      const file = new File([blob], 'attendance.jpg', { type: 'image/jpeg' })
 
-      const result = await staffAPI.markAttendanceWithFace(
-        openSession.id,
-        user.staff_id,
-        file
-      )
-
-      setMessage({ 
-        type: 'success', 
-        text: `✓ ${result.student_name} - ${result.status}` 
-      })
+      // Note: We need to implement face recognition endpoint that returns student_id
+      // For now, we'll use a placeholder - you'll need to integrate actual face recognition
+      const result = await daywiseAttendanceAPI.markAttendanceWithFace(null, file)
       
-      loadSessionStatus()
-      
-      // Clear message after 3 seconds
-      setTimeout(() => setMessage({ type: '', text: '' }), 3000)
+      setMessage({ type: 'success', text: `Attendance marked for ${result.student_name}` })
+      loadTodayAttendance()
     } catch (err) {
-      setMessage({ 
-        type: 'error', 
-        text: err.response?.data?.detail || 'Failed to mark attendance' 
-      })
-    } finally {
-      setLoading(false)
+      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to mark attendance' })
     }
   }
 
-  const handleCloseSession = async () => {
-    if (!window.confirm('Close this session? All unmarked students will be marked absent.')) {
-      return
-    }
-
-    setLoading(true)
-    setMessage({ type: '', text: '' })
-
+  const handleManualMark = async (studentId, status) => {
     try {
-      await staffAPI.closeSession(openSession.id, user.staff_id)
-      setMessage({ type: 'success', text: 'Session closed successfully!' })
-      setOpenSession(null)
-      setSessionStatus(null)
-      setShowCamera(false)
-      loadActiveSessions()
-    } catch (err) {
-      setMessage({ 
-        type: 'error', 
-        text: err.response?.data?.detail || 'Failed to close session' 
+      const currentTime = new Date().toTimeString().split(' ')[0] // HH:MM:SS
+      
+      await daywiseAttendanceAPI.markAttendance({
+        student_id: studentId,
+        check_in_time: currentTime,
+        marked_by: user.staff_id,
+        method: 'manual'
       })
-    } finally {
-      setLoading(false)
+      
+      setMessage({ type: 'success', text: 'Attendance marked successfully' })
+      loadTodayAttendance()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to mark attendance' })
     }
   }
+
+  const handleBulkMark = async (presentStudentIds) => {
+    try {
+      await daywiseAttendanceAPI.bulkMarkAttendance({
+        division_id: division.id,
+        date: selectedDate,
+        marked_by: user.staff_id,
+        present_student_ids: presentStudentIds
+      })
+      
+      setMessage({ type: 'success', text: 'Bulk attendance marked successfully' })
+      loadTodayAttendance()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.detail || 'Failed to mark bulk attendance' })
+    }
+  }
+
+  const showMessage = (type, text) => {
+    setMessage({ type, text })
+    setTimeout(() => setMessage({ type: '', text: '' }), 5000)
+  }
+
+  if (loading) {
+    return <div className="loading">Loading...</div>
+  }
+
+  if (!division) {
+    return (
+      <div className="dashboard">
+        <div className="dashboard-header">
+          <h1>Staff Dashboard</h1>
+          <button onClick={onLogout} className="btn btn-danger">Logout</button>
+        </div>
+        <div className="error-message">
+          You are not assigned to any class/division. Please contact the administrator.
+        </div>
+      </div>
+    )
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+  const isToday = selectedDate === today
 
   return (
     <div className="dashboard">
       <div className="dashboard-header">
         <div>
           <h1>Staff Dashboard</h1>
-          <p>Welcome, {user.name}</p>
+          <p className="welcome-text">Welcome, {user.name}</p>
+          <p className="class-info">Class Teacher: {division.class_name} - {division.name}</p>
         </div>
-        <button className="btn btn-danger" onClick={onLogout}>Logout</button>
+        <button onClick={onLogout} className="btn btn-secondary">Logout</button>
       </div>
 
-      <div className="container">
+      <div className="dashboard-content">
         {message.text && (
-          <div className={`alert alert-${message.type === 'error' ? 'danger' : 'success'}`}>
+          <div className={`message message-${message.type}`}>
             {message.text}
           </div>
         )}
 
-        {!openSession ? (
-          <div className="card">
-            <div className="card-header">Active Sessions</div>
-            
-            {activeSessions.length === 0 ? (
-              <p className="text-muted">No active sessions at this time.</p>
-            ) : (
-              <div className="sessions-grid">
-                {activeSessions.map((session) => (
-                  <div key={session.session_id} className="session-card">
-                    <h3>{session.subject_name}</h3>
-                    <p><strong>Division:</strong> {session.division_name}</p>
-                    {session.batch_name && (
-                      <p><strong>Batch:</strong> {session.batch_name}</p>
-                    )}
-                    <p><strong>Type:</strong> {session.session_type.toUpperCase()}</p>
-                    <p><strong>Time:</strong> {session.start_time} - {session.end_time}</p>
-                    {session.room_number && (
-                      <p><strong>Room:</strong> {session.room_number}</p>
-                    )}
-                    <button
-                      className="btn btn-primary mt-2"
-                      onClick={() => handleOpenSession(session.session_id)}
-                      disabled={loading}
-                    >
-                      Open Attendance
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Attendance Control */}
+        <div className="dashboard-card">
+          <div className="card-header">
+            <h2>Attendance Control</h2>
+            <div className="date-selector">
+              <label>Date: </label>
+              <input
+                type="date"
+                value={selectedDate}
+                max={today}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
           </div>
-        ) : (
-          <div>
-            <div className="card">
-              <div className="card-header">Attendance Session - Open</div>
-              
-              {sessionStatus && (
-                <div className="session-stats">
-                  <div className="stat-box">
-                    <span className="stat-value">{sessionStatus.marked_count}</span>
-                    <span className="stat-label">Marked</span>
-                  </div>
-                  <div className="stat-box">
-                    <span className="stat-value">{sessionStatus.remaining}</span>
-                    <span className="stat-label">Remaining</span>
-                  </div>
-                  <div className="stat-box">
-                    <span className="stat-value">{sessionStatus.total_count}</span>
-                    <span className="stat-label">Total</span>
-                  </div>
+
+          {isToday && (
+            <div className="attendance-toggle">
+              <button
+                onClick={handleToggleAttendance}
+                className={`btn btn-lg ${isAttendanceActive ? 'btn-danger' : 'btn-success'}`}
+              >
+                {isAttendanceActive ? '🔴 Turn Off Attendance' : '🟢 Turn On Attendance'}
+              </button>
+              {isAttendanceActive && (
+                <p className="attendance-status">
+                  ✅ Attendance is active. Grace period: 9:15 AM - 9:30 AM
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Statistics */}
+          <div className="stats-grid">
+            <div className="stat-card stat-total">
+              <h3>Total Students</h3>
+              <p className="stat-number">{students.length}</p>
+            </div>
+            <div className="stat-card stat-present">
+              <h3>Present</h3>
+              <p className="stat-number">{stats.present}</p>
+            </div>
+            <div className="stat-card stat-late">
+              <h3>Late</h3>
+              <p className="stat-number">{stats.late}</p>
+            </div>
+            <div className="stat-card stat-absent">
+              <h3>Absent</h3>
+              <p className="stat-number">{stats.absent}</p>
+            </div>
+            <div className="stat-card stat-unmarked">
+              <h3>Unmarked</h3>
+              <p className="stat-number">{stats.unmarked}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Face Recognition Camera */}
+        {isAttendanceActive && (
+          <div className="dashboard-card">
+            <h2>Face Recognition</h2>
+            <div className="camera-section">
+              <button
+                onClick={() => setShowCamera(!showCamera)}
+                className="btn btn-primary"
+              >
+                {showCamera ? '📷 Hide Camera' : '📷 Show Camera'}
+              </button>
+
+              {showCamera && (
+                <div className="camera-container">
+                  <Webcam
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    width={640}
+                    height={480}
+                  />
+                  <button 
+                    onClick={handleMarkAttendanceWithFace} 
+                    className="btn btn-success btn-lg"
+                  >
+                    📸 Capture & Mark Attendance
+                  </button>
                 </div>
               )}
-
-              <div className="attendance-marking">
-                <h3>Mark Attendance (AI Face Recognition)</h3>
-                <p className="text-muted">Students scan their face to mark attendance</p>
-
-                {!showCamera ? (
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => setShowCamera(true)}
-                  >
-                    Open Camera
-                  </button>
-                ) : (
-                  <>
-                    <div className="webcam-container">
-                      <Webcam
-                        ref={webcamRef}
-                        audio={false}
-                        screenshotFormat="image/jpeg"
-                        videoConstraints={{
-                          width: 640,
-                          height: 480,
-                          facingMode: "user"
-                        }}
-                      />
-                    </div>
-
-                    <div className="camera-actions">
-                      <button
-                        className="btn btn-success"
-                        onClick={handleMarkAttendance}
-                        disabled={loading}
-                      >
-                        {loading ? 'Processing...' : 'Capture & Mark'}
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => setShowCamera(false)}
-                      >
-                        Close Camera
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="session-actions mt-3">
-                <button
-                  className="btn btn-danger"
-                  onClick={handleCloseSession}
-                  disabled={loading}
-                >
-                  Close Session (Mark Remaining as Absent)
-                </button>
-              </div>
             </div>
           </div>
         )}
+
+        {/* Student List */}
+        <div className="dashboard-card full-width">
+          <h2>Student Attendance - {selectedDate}</h2>
+          
+          <div className="attendance-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Roll No</th>
+                  <th>Student Name</th>
+                  <th>Status</th>
+                  <th>Check-in Time</th>
+                  {isToday && isAttendanceActive && <th>Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {students.map(student => {
+                  const record = attendanceRecords.find(r => r.student_id === student.id)
+                  const status = record?.status || 'unmarked'
+                  const checkInTime = record?.check_in_time || '-'
+
+                  return (
+                    <tr key={student.id}>
+                      <td>{student.roll_number}</td>
+                      <td>{student.first_name} {student.last_name}</td>
+                      <td>
+                        <span className={`badge badge-${status}`}>
+                          {status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td>{checkInTime}</td>
+                      {isToday && isAttendanceActive && (
+                        <td>
+                          {status === 'unmarked' && (
+                            <button
+                              onClick={() => handleManualMark(student.id)}
+                              className="btn btn-sm btn-primary"
+                            >
+                              Mark Present
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   )

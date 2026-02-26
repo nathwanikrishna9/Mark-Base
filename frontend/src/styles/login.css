@@ -141,3 +141,37 @@
     flex-direction: column;
   }
 }
+
+/* Password input with toggle button */
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper .form-input {
+  padding-right: 45px;
+  flex: 1;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.3s ease;
+}
+
+.password-toggle-btn:hover {
+  color: var(--accent-color);
+}
+
+.password-toggle-btn:focus {
+  outline: none;
+}

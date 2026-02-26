@@ -27,6 +27,10 @@ class Division(Base):
     students = relationship("Student", back_populates="division")
     timetable_sessions = relationship("TimetableSession", back_populates="division")
     
+    # NEW: Day-wise attendance
+    daily_attendance = relationship("DailyAttendance", back_populates="division", cascade="all, delete-orphan")
+    grace_periods = relationship("GracePeriod", back_populates="division", cascade="all, delete-orphan")
+    
     # Unique constraint: One division name per class
     __table_args__ = (
         UniqueConstraint('class_id', 'name', name='uq_division_class_name'),

@@ -1,197 +1,133 @@
-/**
- * Student Attendance Page - Simple Face Scanning Only
- * No dashboard, no login - just mark attendance
- */
+﻿import React, { useState, useEffect, useRef } from 'react'
 
-import React, { useState, useRef, useEffect } from 'react'
-import Webcam from 'react-webcam'
-import { staffAPI } from '../services/api'
-import '../styles/dashboard.css'
+  
 
-function StudentAttendance() {
-  const webcamRef = useRef(null)
-  const [showCamera, setShowCamera] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [toast, setToast] = useState({ show: false, message: '', type: '' })
-  const [openSessions, setOpenSessions] = useState([])
+const StudentAttendance = () => {
+  const { user } = useAuth()
+  const [sessions, setSessions] = useState([])
   const [selectedSession, setSelectedSession] = useState(null)
-  const [isLoadingSessions, setIsLoadingSessions] = useState(true)
+  const [showCamera, setShowCamera] = useState(false)
+  const [message, setMessage] = useState({ type: '', text: '' })
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
 
-  const showToast = (message, type = 'success') => {
-    setToast({ show: true, message, type })
-    setTimeout(() => setToast({ show: false, message: '', type: '' }), 3000)
-  }
-
-  // Fetch open sessions on component mount
   useEffect(() => {
     fetchOpenSessions()
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchOpenSessions, 30000)
-    return () => clearInterval(interval)
   }, [])
 
-  const fetchOpenSessions = async (divisionId = null) => {
+  const fetchOpenSessions = async () => {
     try {
-      // Get open sessions, optionally filtered by division
-      const sessions = await staffAPI.getOpenSessions(divisionId)
-      setOpenSessions(sessions)
-      
-      // Auto-select first session if available
-      if (sessions.length > 0 && !selectedSession) {
-        setSelectedSession(sessions[0])
-      } else if (sessions.length === 0) {
-        setSelectedSession(null)
-      }
-    } catch (error) {
-      console.error('Error fetching sessions:', error)
-    } finally {
-      setIsLoadingSessions(false)
+      const response = await fetch('http://localhost:8000/api/attendance/sessions/open')
+      const data = await response.json()
+      setSessions(data)
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to load sessions' })
     }
   }
 
-  const handleStartAttendance = () => {
-    if (!selectedSession) {
-      showToast('No attendance session is currently open', 'error')
-      return
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
+      setShowCamera(true)
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to access camera' })
     }
-    setShowCamera(true)
   }
 
-  const handleCaptureFace = async () => {
-    setIsProcessing(true)
-    
-    try {
-      const imageSrc = webcamRef.current.getScreenshot()
-      
-      if (!imageSrc) {
-        showToast('Failed to capture image', 'error')
-        setIsProcessing(false)
-        return
-      }
+  const captureImage = () => {
+    const canvas = canvasRef.current
+    const video = videoRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0)
+    return canvas.toDataURL('image/jpeg')
+  }
 
-      // Convert base64 to blob
-      const blob = await fetch(imageSrc).then(r => r.blob())
+  const markAttendance = async () => {
+    try {
+      const imageData = captureImage()
+      const blob = await (await fetch(imageData)).blob()
       const file = new File([blob], 'face.jpg', { type: 'image/jpeg' })
       
-      // Mark attendance via face recognition (no staff_id needed)
-      const response = await staffAPI.markAttendanceWithFace(
-        selectedSession.attendance_session_id,
-        null,  // staff_id not needed
-        file
+      const formData = new FormData()
+      formData.append('attendance_session_id', selectedSession.attendance_session_id)
+      formData.append('student_id', user.student_id)
+      formData.append('image', file)
+      
+      const response = await fetch(
+        "http://localhost:8000/api/attendance/mark/",
+        {
+          method: 'POST',
+          body: formData
+        }
       )
-      
-      showToast(`✅ Attendance Marked Successfully! Status: ${response.status}`, 'success')
+
+      if (!response.ok) {
+        throw new Error('Failed to mark attendance')
+      }
+
+      const result = await response.json()
+      setMessage({ 
+        type: 'success', 
+        text: 'Attendance marked successfully! Status: ' + result.status
+      })
       setShowCamera(false)
-      
-      // Refresh session list after marking
-      setTimeout(fetchOpenSessions, 1000)
-      
-    } catch (error) {
-      const errorMsg = error.response?.data?.detail || 'Failed to mark attendance. Please try again.'
-      showToast(errorMsg, 'error')
-    } finally {
-      setIsProcessing(false)
+    } catch (err) {
+      setMessage({ 
+        type: 'error', 
+        text: err.message || 'Failed to mark attendance. Please try again.' 
+      })
     }
   }
 
   return (
-    <div className="attendance-page">
-      {/* Toast Notification */}
-      {toast.show && (
-        <div className={`toast toast-${toast.type}`}>
-          {toast.message}
+    <div className="student-attendance">
+      <h1>Mark Your Attendance</h1>
+      
+      {message.text && (
+        <div className={'message message-' + message.type}>
+          {message.text}
         </div>
       )}
 
-      <div className="attendance-container">
-        <div className="attendance-header">
-          <h1>📸 Mark Your Attendance</h1>
-          <p>Scan your face to mark attendance</p>
-        </div>
-
-        {!showCamera ? (
-          <div className="attendance-start">
-            <div className="attendance-card">
-              <div className="icon-large">📷</div>
-              <h2>Ready to Mark Attendance?</h2>
-              
-              {isLoadingSessions ? (
-                <p>Loading sessions...</p>
-              ) : openSessions.length === 0 ? (
-                <div>
-                  <p style={{ color: '#e74c3c' }}>❌ No attendance session is currently open</p>
-                  <p style={{ fontSize: '0.9rem', color: '#666' }}>Please wait for your teacher to start the session</p>
-                  <button 
-                    className="btn btn-secondary" 
-                    onClick={fetchOpenSessions}
-                    style={{ marginTop: '1rem' }}
-                  >
-                    Refresh
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0f0f0', borderRadius: '8px' }}>
-                    <p><strong>Active Session:</strong></p>
-                    <p>📚 Subject: {selectedSession?.subject}</p>
-                    <p>📍 Division: {selectedSession?.division}</p>
-                    <p>👨‍🏫 Staff: {selectedSession?.staff_name}</p>
-                    <p>🕐 Time: {selectedSession?.start_time} - {selectedSession?.end_time}</p>
-                  </div>
-                  
-                  <p>Click the button below to open camera and scan your face</p>
-                  <button 
-                    className="btn btn-primary btn-large" 
-                    onClick={handleStartAttendance}
-                  >
-                    Start Face Scan
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+      <div className="sessions-list">
+        <h2>Available Sessions</h2>
+        {sessions.length === 0 ? (
+          <p>No open sessions available</p>
         ) : (
-          <div className="attendance-scan">
-            <div className="camera-box">
-              <Webcam
-                ref={webcamRef}
-                audio={false}
-                screenshotFormat="image/jpeg"
-                videoConstraints={{
-                  width: 1280,
-                  height: 720,
-                  facingMode: "user"
-                }}
-                className="webcam-fullscreen"
-              />
-              
-              <div className="camera-overlay">
-                <div className="face-guide">
-                  <div className="face-guide-circle"></div>
-                  <p>Position your face in the circle</p>
-                </div>
-              </div>
+          sessions.map(session => (
+            <div 
+              key={session.attendance_session_id}
+              className={'session-item ' + (selectedSession?.attendance_session_id === session.attendance_session_id ? 'selected' : '')}
+              onClick={() => setSelectedSession(session)}
+            >
+              <h3>{session.subject_name}</h3>
+              <p>Course: {session.course_name}</p>
+              <p>Semester: {session.semester}</p>
+              <p>Section: {session.section}</p>
             </div>
-
-            <div className="camera-controls">
-              <button 
-                className="btn btn-success btn-large" 
-                onClick={handleCaptureFace}
-                disabled={isProcessing}
-              >
-                {isProcessing ? 'Processing...' : '✓ Capture & Mark Attendance'}
-              </button>
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => setShowCamera(false)}
-                disabled={isProcessing}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          ))
         )}
       </div>
+
+      {selectedSession && !showCamera && (
+        <button onClick={startCamera} className="btn-primary">
+          Start Camera to Mark Attendance
+        </button>
+      )}
+
+      {showCamera && (
+        <div className="camera-section">
+          <video ref={videoRef} autoPlay />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <button onClick={markAttendance} className="btn-primary">
+            Capture & Mark Attendance
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import Webcam from 'react-webcam'
 import { authAPI } from '../services/api'
 import '../styles/login.css'
@@ -12,6 +13,7 @@ function Login({ onLogin }) {
   const [loginMode, setLoginMode] = useState('password') // 'password' or 'face'
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showCamera, setShowCamera] = useState(false)
@@ -112,14 +114,24 @@ function Login({ onLogin }) {
 
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input
-                type="password"
-                className="form-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-              />
+              <div className="password-input-wrapper">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="form-input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
             </div>
 
             <button type="submit" className="btn btn-primary" disabled={loading}>
@@ -127,7 +139,7 @@ function Login({ onLogin }) {
             </button>
 
             <div className="login-hint">
-              <p>👤 Admin, Staff, Parent: Use username & password</p>
+              <p>?? Admin, Staff, Parent: Use username & password</p>
             </div>
           </form>
         ) : (
