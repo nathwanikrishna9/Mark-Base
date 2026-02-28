@@ -87,7 +87,7 @@ function AdminDashboard({ user, onLogout }) {
   }, []);
   const loadAllData = async () => {
     try {
-      const [depts, cls, divs, studs, stf, subjs, btchs, prnts] =
+      const [depts, cls, divs, studs, stf, subjs, btchs, prnts, sessions] =
         await Promise.all([
           adminAPI.getDepartments(),
           adminAPI.getClasses(),
@@ -97,6 +97,7 @@ function AdminDashboard({ user, onLogout }) {
           adminAPI.getSubjects(),
           adminAPI.getBatches(),
           adminAPI.getParents(),
+          timetableAPI.getAllSessions(),
         ]);
       setDepartments(depts);
       setClasses(cls);
@@ -106,6 +107,7 @@ function AdminDashboard({ user, onLogout }) {
       setSubjects(subjs);
       setBatches(btchs);
       setParents(prnts);
+      setTimetableSessions(sessions);
     } catch (error) {
       showMessage("error", "Failed to load data");
     }
@@ -250,7 +252,20 @@ function AdminDashboard({ user, onLogout }) {
   const handleCreateTimetable = async (e) => {
     e.preventDefault();
     try {
-      await timetableAPI.createSession(timetableForm);
+      const payload = {
+        ...timetableForm,
+        division_id: parseInt(timetableForm.division_id),
+        batch_id: timetableForm.batch_id ? parseInt(timetableForm.batch_id) : null,
+        subject_id: parseInt(timetableForm.subject_id),
+        staff_id: parseInt(timetableForm.staff_id),
+        day_of_week: parseInt(timetableForm.day_of_week),
+        start_time: timetableForm.start_time,
+        end_time: timetableForm.end_time,
+        session_type: timetableForm.session_type,
+        room_number: timetableForm.room_number || null,
+      };
+
+      await timetableAPI.createSession(payload);
       showMessage("success", "Timetable session created successfully!");
       setTimetableForm({
         division_id: "",

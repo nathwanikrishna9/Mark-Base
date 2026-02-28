@@ -131,7 +131,7 @@ def get_all_timetable_sessions(db: Session = Depends(get_db)):
         {
             "id": s.id,
             "division_id": s.division_id,
-            "division": f"{s.division.class_obj.name} {s.division.name}",
+            "division": f"{s.division.class_.name} {s.division.name}",
             "batch_id": s.batch_id,
             "batch": s.batch.name if s.batch_id else None,
             "subject_id": s.subject_id,

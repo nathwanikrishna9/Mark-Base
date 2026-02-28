@@ -1,9 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react'
-
-  
+import { staffAPI } from '../services/api'
 
 const StudentAttendance = () => {
-  const { user } = useAuth()
   const [sessions, setSessions] = useState([])
   const [selectedSession, setSelectedSession] = useState(null)
   const [showCamera, setShowCamera] = useState(false)
@@ -17,8 +15,7 @@ const StudentAttendance = () => {
 
   const fetchOpenSessions = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/attendance/sessions/open')
-      const data = await response.json()
+      const data = await staffAPI.getOpenSessions()
       setSessions(data)
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to load sessions' })
@@ -51,34 +48,22 @@ const StudentAttendance = () => {
       const imageData = captureImage()
       const blob = await (await fetch(imageData)).blob()
       const file = new File([blob], 'face.jpg', { type: 'image/jpeg' })
-      
-      const formData = new FormData()
-      formData.append('attendance_session_id', selectedSession.attendance_session_id)
-      formData.append('student_id', user.student_id)
-      formData.append('image', file)
-      
-      const response = await fetch(
-        "http://localhost:8000/api/attendance/mark/",
-        {
-          method: 'POST',
-          body: formData
-        }
+
+      const result = await staffAPI.markAttendanceWithFace(
+        selectedSession.attendance_session_id,
+        null,
+        file
       )
 
-      if (!response.ok) {
-        throw new Error('Failed to mark attendance')
-      }
-
-      const result = await response.json()
-      setMessage({ 
-        type: 'success', 
+      setMessage({
+        type: 'success',
         text: 'Attendance marked successfully! Status: ' + result.status
       })
       setShowCamera(false)
     } catch (err) {
-      setMessage({ 
-        type: 'error', 
-        text: err.message || 'Failed to mark attendance. Please try again.' 
+      setMessage({
+        type: 'error',
+        text: err.message || 'Failed to mark attendance. Please try again.'
       })
     }
   }
@@ -104,10 +89,11 @@ const StudentAttendance = () => {
               className={'session-item ' + (selectedSession?.attendance_session_id === session.attendance_session_id ? 'selected' : '')}
               onClick={() => setSelectedSession(session)}
             >
-              <h3>{session.subject_name}</h3>
-              <p>Course: {session.course_name}</p>
-              <p>Semester: {session.semester}</p>
-              <p>Section: {session.section}</p>
+              <h3>{session.subject}</h3>
+              <p>Division: {session.division}</p>
+              <p>Type: {session.session_type}</p>
+              <p>Timing: {session.start_time} - {session.end_time}</p>
+              <p>Faculty: {session.staff_name}</p>
             </div>
           ))
         )}

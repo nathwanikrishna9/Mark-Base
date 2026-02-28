@@ -225,6 +225,20 @@ export const staffAPI = {
     return response.data
   },
 
+  // Get staff details by ID
+  getStaffById: async (staffId) => {
+    const response = await api.get(`/api/admin/staff/${staffId}`)
+    return response.data
+  },
+
+  // Get students by division
+  getStudentsByDivision: async (divisionId) => {
+    const response = await api.get('/api/admin/students', {
+      params: { division_id: divisionId }
+    })
+    return response.data
+  },
+
   // Open attendance session
   openSession: async (timetableSessionId, staffId) => {
     const response = await api.post(`/api/staff/open-session/${timetableSessionId}`, null, {
@@ -385,6 +399,18 @@ export const timetableAPI = {
     const response = await api.get(`/api/timetable/staff/${staffId}`)
     return response.data
   },
+
+  // Get all timetable sessions
+  getAllSessions: async () => {
+    const response = await api.get('/api/timetable/sessions')
+    return response.data
+  },
+
+  // Delete timetable session
+  deleteSession: async (sessionId) => {
+    const response = await api.delete(`/api/timetable/sessions/${sessionId}`)
+    return response.data
+  },
 }
 
 
@@ -400,39 +426,47 @@ export const daywiseAttendanceAPI = {
   },
 
   // Mark attendance with face recognition
-  markAttendanceWithFace: async (studentId, imageFile) => {
+  markAttendanceWithFace: async (markedBy, imageFile) => {
     const formData = new FormData()
     formData.append('image', imageFile)
-    
-    const response = await api.post(`/api/attendance/daywise/mark-face/${studentId}`, formData, {
+
+    const faceResponse = await api.post('/api/auth/login/face', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    return response.data
+
+    const currentTime = new Date().toTimeString().split(' ')[0]
+
+    const attendanceResponse = await api.post('/api/attendance/daywise/mark', {
+      student_id: faceResponse.data.student_id,
+      check_in_time: currentTime,
+      marked_by: markedBy,
+      method: 'face_recognition'
+    })
+
+    return {
+      ...attendanceResponse.data,
+      student_name: faceResponse.data.name,
+      student_id: faceResponse.data.student_id
+    }
   },
 
   // Bulk mark for entire division
-  bulkMarkDivision: async (divisionId, markedBy, method = 'manual') => {
-    const response = await api.post('/api/attendance/daywise/bulk-mark', {
-      division_id: divisionId,
-      marked_by_staff_id: markedBy,
-      method: method
-    })
+  bulkMarkAttendance: async (payload) => {
+    const response = await api.post('/api/attendance/daywise/bulk-mark', payload)
     return response.data
   },
 
   // Get attendance for a student
-  getStudentAttendance: async (studentId, startDate = null, endDate = null) => {
-    const response = await api.get(`/api/attendance/daywise/student/${studentId}`, {
-      params: { start_date: startDate, end_date: endDate }
-    })
+  getStudentAttendance: async (studentId, date = null) => {
+    const resolvedDate = date || new Date().toISOString().split('T')[0]
+    const response = await api.get(`/api/attendance/daywise/student/${studentId}/${resolvedDate}`)
     return response.data
   },
 
   // Get attendance for a division
   getDivisionAttendance: async (divisionId, date = null) => {
-    const response = await api.get(`/api/attendance/daywise/division/${divisionId}`, {
-      params: { date: date }
-    })
+    const resolvedDate = date || new Date().toISOString().split('T')[0]
+    const response = await api.get(`/api/attendance/daywise/division/${divisionId}/${resolvedDate}`)
     return response.data
   },
 

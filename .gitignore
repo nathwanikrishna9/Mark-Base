@@ -61,3 +61,7 @@ frontend/dist/
 htmlcov/
 
 vIVA_GUIDE.md
+
+*.bat   
+package-lock.json
+package.json

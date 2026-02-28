@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.services.timetable_service import TimetableService
 from app.services.attendance_service import AttendanceService
 from app.services.auth_service import AuthService
-from app.models import AttendanceSession, AttendanceRecord
+from app.models import AttendanceSession, AttendanceRecord, TimetableSession
 
 
 router = APIRouter(prefix="/api/staff", tags=["Staff"])

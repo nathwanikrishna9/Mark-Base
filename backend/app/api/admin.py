@@ -273,6 +273,50 @@ def get_staff(department_id: Optional[int] = None, db: Session = Depends(get_db)
 
 
 @router.post("/staff")
+def create_staff(request: CreateStaffRequest, db: Session = Depends(get_db)):
+    """Create a new staff member."""
+    # Validate department exists
+    department = db.query(Department).filter(Department.id == request.department_id).first()
+    if not department:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Department not found"
+        )
+
+    # Check if username already exists
+    existing_user = db.query(User).filter(User.username == request.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists"
+        )
+
+    # Create user account
+    user = User(
+        username=request.username,
+        password_hash=get_password_hash(request.password),
+        role="staff"
+    )
+    db.add(user)
+    db.flush()
+
+    # Create staff profile
+    staff = Staff(
+        user_id=user.id,
+        staff_id=request.staff_id,
+        first_name=request.first_name,
+        last_name=request.last_name,
+        email=request.email,
+        phone=request.phone,
+        department_id=request.department_id,
+        class_id=request.class_id,
+        division_id=request.division_id
+    )
+    db.add(staff)
+    db.commit()
+    db.refresh(staff)
+
+    return staff
 
 
 @router.get("/staff/{staff_id}")
@@ -306,50 +350,6 @@ def get_staff_by_id(staff_id: int, db: Session = Depends(get_db)):
         "class_name": class_name,
         "username": staff.username
     }
-def create_staff(request: CreateStaffRequest, db: Session = Depends(get_db)):
-    """Create a new staff member."""
-    # Validate department exists
-    department = db.query(Department).filter(Department.id == request.department_id).first()
-    if not department:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Department not found"
-        )
-    
-    # Check if username already exists
-    existing_user = db.query(User).filter(User.username == request.username).first()
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists"
-        )
-    
-    # Create user account
-    user = User(
-        username=request.username,
-        password_hash=get_password_hash(request.password),
-        role="staff"
-    )
-    db.add(user)
-    db.flush()
-    
-    # Create staff profile
-    staff = Staff(
-        user_id=user.id,
-        staff_id=request.staff_id,
-        first_name=request.first_name,
-        last_name=request.last_name,
-        email=request.email,
-        phone=request.phone,
-        department_id=request.department_id,
-        class_id=request.class_id,
-        division_id=request.division_id
-    )
-    db.add(staff)
-    db.commit()
-    db.refresh(staff)
-    
-    return staff
 
 
 # ==================== STUDENT ENDPOINTS ====================

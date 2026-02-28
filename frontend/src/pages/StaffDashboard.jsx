@@ -109,7 +109,7 @@ function StaffDashboard({ user, onLogout }) {
 
       // Note: We need to implement face recognition endpoint that returns student_id
       // For now, we'll use a placeholder - you'll need to integrate actual face recognition
-      const result = await daywiseAttendanceAPI.markAttendanceWithFace(null, file)
+      const result = await daywiseAttendanceAPI.markAttendanceWithFace(user.staff_id, file)
       
       setMessage({ type: 'success', text: `Attendance marked for ${result.student_name}` })
       loadTodayAttendance()

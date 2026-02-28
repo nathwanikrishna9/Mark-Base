@@ -2,9 +2,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import init_db
-from app.api import auth, admin, staff, student, parent, attendance_daywise
-# DISABLED: Lecture-wise attendance - now using day-wise only
-# from app.api import timetable
+from app.api import auth, admin, staff, student, parent, attendance_daywise, timetable
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -28,10 +26,10 @@ app.include_router(staff.router)
 app.include_router(student.router)
 app.include_router(parent.router)
 
-# DISABLED: Lecture-wise attendance system
-# app.include_router(timetable.router)
+# Lecture-wise timetable system (used for staff session assignment)
+app.include_router(timetable.router)
 
-# ACTIVE: Day-wise attendance system
+# Day-wise attendance system
 app.include_router(attendance_daywise.router)
 
 @app.on_event("startup")
