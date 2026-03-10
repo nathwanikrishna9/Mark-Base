@@ -1,124 +1,103 @@
-﻿"""
-Student API endpoints for viewing attendance records.
-Students can only view their own attendance data (no marking capability).
+"""
+Student API endpoints for viewing day-wise attendance records.
+Students can only view their own attendance data.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Dict, Optional
+from datetime import datetime
 from app.core.database import get_db
-from app.models import Student, Subject
+from app.models import Student, DailyAttendance
 
 
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
 
-# Response Models
-class AttendanceRecordResponse(BaseModel):
+class DailyAttendanceResponse(BaseModel):
     date: str
-    subject: str
     status: str
-    marked_at: str
-    session_time: str
+    check_in_time: str
+    marked_method: str
+
+class StudentDashboardResponse(BaseModel):
+    student_info: dict
+    overall_statistics: dict
+    recent_attendance: List[DailyAttendanceResponse]
+    late_entries_count: int
 
 
-class SubjectAttendanceResponse(BaseModel):
-    subject_id: int
-    subject_name: str
-    total: int
-    present: int
-    late: int
-    absent: int
-    percentage: float
-
-
-@router.get("/my-attendance/{student_id}", response_model=List[SubjectAttendanceResponse])
-def get_my_attendance(student_id: int, db: Session = Depends(get_db)):
-    """
-    Get attendance summary for all subjects.
+def _get_student_attendance_stats(db: Session, student_id: int):
+    records = db.query(DailyAttendance).filter(DailyAttendance.student_id == student_id).all()
     
-    Returns subject-wise attendance with percentages.
-    """
-    # Get student
-    student = db.query(Student).filter(Student.id == student_id).first()
+    total = len(records)
+    present = sum(1 for r in records if r.status == 'present')
+    late = sum(1 for r in records if r.status == 'late')
+    absent = sum(1 for r in records if r.status == 'absent')
     
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student not found"
-        )
-    
-    # Get all subjects for student's class
-    division = student.division
-    class_id = division.class_id
-    subjects = db.query(Subject).filter(Subject.class_id == class_id).all()
-    
-    result = []
-    for subject in subjects:
-        stats = AttendanceService.get_student_attendance_percentage(
-            db, student_id, subject.id
-        )
+    percentage = 0
+    if total > 0:
+        # Assuming late is counted as present for percentage, or half? Typically present + late
+        percentage = round(((present + late) / total) * 100, 2)
         
-        result.append({
-            "subject_id": subject.id,
-            "subject_name": subject.name,
-            "total": stats["total"],
-            "present": stats["present"],
-            "late": stats["late"],
-            "absent": stats["absent"],
-            "percentage": stats["percentage"]
-        })
-    
-    return result
-
-
-@router.get("/attendance/subject/{student_id}/{subject_id}")
-def get_attendance_by_subject(
-    student_id: int,
-    subject_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Get detailed attendance records for a specific subject.
-    
-    Shows date-wise attendance with status (Present/Late/Absent).
-    """
-    records = AttendanceService.get_student_attendance_by_subject(
-        db, student_id, subject_id
-    )
-    
-    result = []
-    for record in records:
-        session = record.attendance_session
-        result.append({
-            "date": str(session.date),
-            "subject": session.timetable_session.subject.name,
-            "status": record.status.upper(),
-            "marked_at": str(record.marked_at),
-            "session_time": f"{session.session_start_time} - {session.session_end_time}"
-        })
-    
-    return result
-
-
-@router.get("/attendance/overall/{student_id}")
-def get_overall_attendance(student_id: int, db: Session = Depends(get_db)):
-    """
-    Get overall attendance statistics across all subjects.
-    """
-    stats = AttendanceService.get_student_attendance_percentage(db, student_id)
-    
     return {
-        "student_id": student_id,
-        "overall_statistics": stats
+        "total": total,
+        "present": present,
+        "late": late,
+        "absent": absent,
+        "percentage": percentage
     }
 
 
-@router.get("/dashboard/{student_id}")
+@router.get("/{student_id}/attendance", response_model=List[DailyAttendanceResponse])
+def get_my_attendance(
+    student_id: int, 
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed daily attendance records for a student.
+    """
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+        
+    query = db.query(DailyAttendance).filter(DailyAttendance.student_id == student_id)
+    
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d").date()
+            query = query.filter(DailyAttendance.date >= sd)
+        except ValueError:
+            pass
+            
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d").date()
+            query = query.filter(DailyAttendance.date <= ed)
+        except ValueError:
+            pass
+            
+    records = query.order_by(DailyAttendance.date.desc()).all()
+    
+    result = []
+    for record in records:
+        result.append({
+            "date": str(record.date),
+            "status": record.status.capitalize(),
+            "check_in_time": str(record.check_in_time) if record.check_in_time else "N/A",
+            "marked_method": record.marked_method or "unknown"
+        })
+        
+    return result
+
+
+@router.get("/{student_id}/dashboard", response_model=StudentDashboardResponse)
 def get_student_dashboard(student_id: int, db: Session = Depends(get_db)):
     """
-    Get student dashboard data with recent attendance and alerts.
+    Get student dashboard data with recent day-wise attendance.
     """
     student = db.query(Student).filter(Student.id == student_id).first()
     
@@ -129,58 +108,33 @@ def get_student_dashboard(student_id: int, db: Session = Depends(get_db)):
         )
     
     # Overall stats
-    overall_stats = AttendanceService.get_student_attendance_percentage(db, student_id)
+    stats = _get_student_attendance_stats(db, student_id)
     
     # Recent attendance (last 10 records)
-    from app.models import DailyAttendance
-    recent_records = db.query(AttendanceRecord).join(
-        AttendanceSession
-    ).filter(
-        AttendanceRecord.student_id == student_id
+    recent_records = db.query(DailyAttendance).filter(
+        DailyAttendance.student_id == student_id
     ).order_by(
-        AttendanceSession.date.desc()
+        DailyAttendance.date.desc()
     ).limit(10).all()
     
     recent_attendance = [
         {
-            "date": str(record.attendance_session.date),
-            "subject": record.attendance_session.timetable_session.subject.name,
-            "status": record.status.upper(),
-            "marked_at": str(record.marked_at)
+            "date": str(record.date),
+            "status": record.status.capitalize(),
+            "check_in_time": str(record.check_in_time) if record.check_in_time else "N/A",
+            "marked_method": record.marked_method or "unknown"
         }
         for record in recent_records
     ]
-    
-    # Late entries count
-    late_count = sum(1 for r in recent_records if r.status == "late")
-    
-    # Low attendance subjects (below 75%)
-    division = student.division
-    class_id = division.class_id
-    subjects = db.query(Subject).filter(Subject.class_id == class_id).all()
-    
-    low_attendance_subjects = []
-    for subject in subjects:
-        stats = AttendanceService.get_student_attendance_percentage(
-            db, student_id, subject.id
-        )
-        if stats["total"] > 0 and stats["percentage"] < 75:
-            low_attendance_subjects.append({
-                "subject": subject.name,
-                "percentage": stats["percentage"]
-            })
     
     return {
         "student_info": {
             "name": f"{student.first_name} {student.last_name}",
             "roll_number": student.roll_number,
-            "division": student.division.name,
+            "division": student.division.name if student.division else "Unassigned",
             "batch": student.batch.name if student.batch else None
         },
-        "overall_statistics": overall_stats,
+        "overall_statistics": stats,
         "recent_attendance": recent_attendance,
-        "late_entries_count": late_count,
-        "low_attendance_alerts": low_attendance_subjects
+        "late_entries_count": stats['late']
     }
-
-

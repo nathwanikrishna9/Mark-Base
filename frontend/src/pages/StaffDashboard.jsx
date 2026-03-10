@@ -58,20 +58,42 @@ function StaffDashboard({ user, onLogout }) {
     }
   }
 
-  // Polling for dynamic updates when session is active
+  // WebSocket setup for real-time updates
   useEffect(() => {
-    let interval;
+    let ws;
     if (isAttendanceActive && division) {
-      interval = setInterval(() => {
-        try {
-          loadTodayAttendance()
-        } catch (e) {
-          console.error('Polling error:', e)
+      const sessionId = `${division.id}_${selectedDate}`;
+      ws = new WebSocket(`ws://localhost:8000/ws/attendance/${sessionId}`);
+      
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'ATTENDANCE_UPDATE') {
+          setAttendanceRecords(prev => {
+            const newRecords = [...prev];
+            const index = newRecords.findIndex(r => r.student_id === data.student_id);
+            if (index !== -1) {
+              newRecords[index] = { ...newRecords[index], status: data.status, check_in_time: data.check_in_time, marked_method: data.marked_method };
+              return newRecords;
+            } else {
+              loadTodayAttendance(); // fallback
+              return prev;
+            }
+          });
+        } else if (data.type === 'ATTENDANCE_BULK_UPDATE') {
+          loadTodayAttendance();
         }
-      }, 5000);
+      };
+      
+      ws.onerror = (error) => console.error("WebSocket error:", error);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (ws) ws.close();
+    };
   }, [isAttendanceActive, division, selectedDate]);
+
+  useEffect(() => {
+    calculateStats(attendanceRecords);
+  }, [attendanceRecords]);
 
   useEffect(() => {
     if (showDivisionSelector) {
@@ -331,8 +353,8 @@ function StaffDashboard({ user, onLogout }) {
 
   const now = new Date()
   const currentTotalMinutes = now.getHours() * 60 + now.getMinutes()
-  const windowStart = 23 * 60 + 0     // 11:00 PM
-  const windowEnd = 23 * 60 + 20      // 11:20 PM
+  const windowStart = 12 * 60 + 0     // 12:00 PM
+  const windowEnd = 12 * 60 + 20      // 12:20 PM
   
   const isBeforeWindow = currentTotalMinutes < windowStart
   const isAfterWindow = currentTotalMinutes > windowEnd
@@ -359,7 +381,7 @@ function StaffDashboard({ user, onLogout }) {
 
       <div className="dashboard-content">
         <div className="alert alert-warning" style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #ffeeba', fontWeight: 'bold' }}>
-          📌 Note: Session must be turned on by the staff at exactly 11:00 PM. Window closes at 11:20 PM.
+          📌 Note: Session must be turned on by the staff at exactly 12:00 PM. Window closes at 12:20 PM.
         </div>
 
         {message.text && !isAttendanceActive && (
@@ -386,13 +408,13 @@ function StaffDashboard({ user, onLogout }) {
 
              {isBeforeWindow && (
                 <p style={{ color: '#888', fontStyle: 'italic', fontSize: '18px', marginTop: '20px' }}>
-                  ⏳ Attendance window opens at 11:00 PM.
+                  ⏳ Attendance window opens at 12:00 PM.
                 </p>
              )}
 
              {isAfterWindow && (
                 <p style={{ color: '#e53935', fontWeight: '600', fontSize: '18px', marginTop: '20px' }}>
-                  🚫 Attendance will start tomorrow at 11:00 PM.
+                  🚫 Attendance will start tomorrow at 12:00 PM.
                 </p>
              )}
            </div>
@@ -409,7 +431,7 @@ function StaffDashboard({ user, onLogout }) {
                     ✅ Session is active.
                     <br/>
                     <span style={{ fontSize: '0.9em', color: '#666', fontWeight: 'normal' }}>
-                      Present deadline: 11:10 PM | Late deadline: 11:20 PM
+                      Present deadline: 12:15 PM | Late deadline: 12:20 PM
                     </span>
                   </p>
                 </div>
@@ -497,9 +519,31 @@ function StaffDashboard({ user, onLogout }) {
                         </td>
                         <td>{record.student_name || 'Unknown'}</td>
                         <td>
-                          <span className={`badge ${(record.status || '') === 'present' ? 'badge-success' : (record.status || '') === 'late' ? 'badge-warning' : (record.status || '') === 'absent' ? 'badge-danger' : 'badge-secondary'}`} style={{ padding: '5px 10px', borderRadius: '4px', display: 'inline-block', minWidth: '80px', textAlign: 'center' }}>
-                            {record.status ? record.status.charAt(0).toUpperCase() + record.status.slice(1) : 'Unmarked'}
-                          </span>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {['present', 'late', 'absent'].map(statusOption => (
+                              <button
+                                key={statusOption}
+                                onClick={async () => {
+                                  try {
+                                    await daywiseAttendanceAPI.overrideAttendance(division.id, record.student_id, selectedDate, { status: statusOption, updated_by: user.staff_id });
+                                    setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+                                  } catch (err) {
+                                  }
+                                }}
+                                style={{
+                                  padding: '5px 12px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #ccc',
+                                  cursor: 'pointer',
+                                  fontWeight: '600',
+                                  backgroundColor: (record.status === statusOption) ? (statusOption === 'present' ? '#28a745' : statusOption === 'late' ? '#ffc107' : '#dc3545') : '#f8f9fa',
+                                  color: (record.status === statusOption) ? '#fff' : '#495057'
+                                }}
+                              >
+                                {statusOption.charAt(0).toUpperCase() + statusOption.slice(1)}
+                              </button>
+                            ))}
+                          </div>
                         </td>
                         <td>{record.check_in_time || '-'}</td>
                       </tr>

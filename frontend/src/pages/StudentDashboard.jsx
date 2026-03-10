@@ -1,10 +1,10 @@
 /**
  * Student Dashboard - View-only interface for students.
  * Features:
- * - View subject-wise attendance
+ * - View day-wise attendance
  * - View attendance percentage
  * - View late entries
- * - View attendance alerts
+ * - View recent day-wise entries
  */
 
 import React, { useState, useEffect } from 'react'
@@ -38,7 +38,7 @@ function StudentDashboard({ user, onLogout }) {
 
   const loadAttendance = async () => {
     try {
-      const data = await studentAPI.getMyAttendance(user.student_id)
+      const data = await studentAPI.getAttendance(user.student_id)
       setAttendance(data)
     } catch (err) {
       console.error('Failed to load attendance:', err)
@@ -67,15 +67,28 @@ function StudentDashboard({ user, onLogout }) {
     }]
   } : null
 
-  // Bar chart for subject-wise attendance
-  const subjectChartData = {
-    labels: attendance.map(a => a.subject_name),
+  // Process data for a 7-day or 10-day bar chart showing recent attendance
+  // Reversing so that oldest is on the left, newest on the right
+  const recentDays = dashboard ? [...dashboard.recent_attendance].reverse() : []
+
+  const dailyChartData = {
+    labels: recentDays.map(a => {
+      const dateStr = a.date;
+      const parsed = new Date(dateStr);
+      return `${parsed.getDate()}/${parsed.getMonth() + 1}`;
+    }),
     datasets: [{
-      label: 'Attendance %',
-      data: attendance.map(a => a.percentage),
-      backgroundColor: attendance.map(a => 
-        a.percentage >= 75 ? '#4caf50' : '#f44336'
-      ),
+      label: 'Attendance Status (1=Present, 0.5=Late, 0=Absent)',
+      data: recentDays.map(a => {
+        if (a.status.toLowerCase() === 'present') return 1;
+        if (a.status.toLowerCase() === 'late') return 0.5;
+        return 0;
+      }),
+      backgroundColor: recentDays.map(a => {
+        if (a.status.toLowerCase() === 'present') return '#4caf50';
+        if (a.status.toLowerCase() === 'late') return '#ff9800';
+        return '#f44336';
+      }),
     }]
   }
 
@@ -84,8 +97,8 @@ function StudentDashboard({ user, onLogout }) {
       <div className="dashboard-header">
         <div>
           <h1>Student Dashboard</h1>
-          <p>Welcome, {user.name}</p>
-          <p className="text-muted">Roll: {user.roll_number}</p>
+          <p>Welcome, {dashboard ? dashboard.student_info.name : user.name}</p>
+          <p className="text-muted">Roll: {dashboard ? dashboard.student_info.roll_number : user.roll_number}</p>
         </div>
         <button className="btn btn-danger" onClick={onLogout}>Logout</button>
       </div>
@@ -93,23 +106,29 @@ function StudentDashboard({ user, onLogout }) {
       <div className="container">
         {/* Overall Statistics */}
         {dashboard && (
-          <div className="grid grid-3">
+          <div className="grid grid-4">
             <div className="card stat-card">
               <h3>Overall Attendance</h3>
-              <div className="stat-large">{dashboard.overall_statistics.percentage}%</div>
-              <p className="text-muted">{dashboard.overall_statistics.total} sessions</p>
+              <div className="stat-large">{dashboard.overall_statistics.percentage.toFixed(1)}%</div>
+              <p className="text-muted">{dashboard.overall_statistics.total} days logged</p>
             </div>
-            
+
             <div className="card stat-card">
               <h3>Present</h3>
               <div className="stat-large text-success">{dashboard.overall_statistics.present}</div>
               <p className="text-muted">On time</p>
             </div>
-            
+
             <div className="card stat-card">
               <h3>Late Entries</h3>
               <div className="stat-large text-warning">{dashboard.late_entries_count}</div>
               <p className="text-muted">After grace period</p>
+            </div>
+
+            <div className="card stat-card">
+              <h3>Absent</h3>
+              <div className="stat-large text-danger">{dashboard.overall_statistics.absent}</div>
+              <p className="text-muted">Missed classes</p>
             </div>
           </div>
         )}
@@ -119,112 +138,93 @@ function StudentDashboard({ user, onLogout }) {
           <div className="card">
             <div className="card-header">Overall Attendance Distribution</div>
             {overallChartData && (
-              <div className="chart-container">
+              <div className="chart-container" style={{ position: 'relative', height: '300px' }}>
                 <Pie data={overallChartData} options={{ maintainAspectRatio: false }} />
               </div>
             )}
           </div>
 
           <div className="card">
-            <div className="card-header">Subject-wise Attendance</div>
-            <div className="chart-container">
-              <Bar 
-                data={subjectChartData} 
-                options={{
-                  maintainAspectRatio: false,
-                  scales: {
-                    y: {
-                      beginAtZero: true,
-                      max: 100
+            <div className="card-header">Recent Day-wise Attendance (Last {recentDays.length} Days)</div>
+            {recentDays.length > 0 ? (
+              <div className="chart-container" style={{ position: 'relative', height: '300px' }}>
+                <Bar
+                  data={dailyChartData}
+                  options={{
+                    maintainAspectRatio: false,
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: {
+                          callback: function (value) {
+                            if (value === 1) return 'Present';
+                            if (value === 0.5) return 'Late';
+                            if (value === 0) return 'Absent';
+                            return '';
+                          }
+                        }
+                      }
+                    },
+                    plugins: {
+                      tooltip: {
+                        callbacks: {
+                          label: function (context) {
+                            const val = context.raw;
+                            if (val === 1) return 'Present';
+                            if (val === 0.5) return 'Late';
+                            return 'Absent';
+                          }
+                        }
+                      }
                     }
-                  }
-                }} 
-              />
-            </div>
+                  }}
+                />
+              </div>
+            ) : (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
+                No recent attendance data.
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Low Attendance Alerts */}
-        {dashboard && dashboard.low_attendance_alerts.length > 0 && (
-          <div className="card">
-            <div className="card-header">⚠️ Low Attendance Alerts</div>
-            <div className="alert alert-warning">
-              The following subjects have attendance below 75%:
-            </div>
-            <div className="alerts-grid">
-              {dashboard.low_attendance_alerts.map((alert, index) => (
-                <div key={index} className="alert-item">
-                  <strong>{alert.subject}</strong>
-                  <span className="badge badge-absent">{alert.percentage}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Subject-wise Details */}
+        {/* Day-wise Details Grid */}
         <div className="card">
-          <div className="card-header">Subject-wise Attendance Details</div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>Total</th>
-                <th>Present</th>
-                <th>Late</th>
-                <th>Absent</th>
-                <th>Percentage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {attendance.map((subj) => (
-                <tr key={subj.subject_id}>
-                  <td>{subj.subject_name}</td>
-                  <td>{subj.total}</td>
-                  <td className="text-success">{subj.present}</td>
-                  <td className="text-warning">{subj.late}</td>
-                  <td className="text-danger">{subj.absent}</td>
-                  <td>
-                    <span className={`badge ${subj.percentage >= 75 ? 'badge-present' : 'badge-absent'}`}>
-                      {subj.percentage}%
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Recent Attendance */}
-        {dashboard && dashboard.recent_attendance.length > 0 && (
-          <div className="card">
-            <div className="card-header">Recent Attendance</div>
+          <div className="card-header">Day-wise Attendance Details</div>
+          <div className="table-responsive">
             <table className="table">
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Subject</th>
                   <th>Status</th>
-                  <th>Time</th>
+                  <th>Check-in Time</th>
+                  <th>Marking Method</th>
                 </tr>
               </thead>
               <tbody>
-                {dashboard.recent_attendance.map((record, index) => (
-                  <tr key={index}>
-                    <td>{record.date}</td>
-                    <td>{record.subject}</td>
-                    <td>
-                      <span className={`badge badge-${record.status.toLowerCase()}`}>
-                        {record.status}
-                      </span>
-                    </td>
-                    <td>{new Date(record.marked_at).toLocaleTimeString()}</td>
+                {attendance.length > 0 ? (
+                  attendance.map((att, index) => (
+                    <tr key={index}>
+                      <td>{att.date}</td>
+                      <td>
+                        <span className={`badge badge-${att.status.toLowerCase() === 'present' ? 'success' : (att.status.toLowerCase() === 'late' ? 'warning' : 'danger')}`} style={{ padding: '5px 10px', borderRadius: '4px' }}>
+                          {att.status}
+                        </span>
+                      </td>
+                      <td>{att.check_in_time !== 'N/A' && att.check_in_time !== '00:00:00' ? att.check_in_time : '-'}</td>
+                      <td>{att.marked_method !== 'unknown' ? att.marked_method.replace('_', ' ').toUpperCase() : '-'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>No daily attendance records available yet.</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

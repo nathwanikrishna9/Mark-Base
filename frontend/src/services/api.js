@@ -136,6 +136,11 @@ export const adminAPI = {
     return response.data
   },
 
+  getAnalytics: async (days) => {
+    const response = await api.get(`/api/admin/analytics?days=${days}`)
+    return response.data
+  },
+
   // Students
   getStudents: async () => {
     const response = await api.get('/api/admin/students')
@@ -286,14 +291,22 @@ export const parentAPI = {
     return response.data
   },
 
-  // Get child's attendance
-  getChildAttendance: async (studentId, startDate = null, endDate = null) => {
-    const params = {}
-    if (startDate) params.start_date = startDate
-    if (endDate) params.end_date = endDate
-    const response = await api.get(`/api/parent/student/${studentId}/attendance`, { params })
+  // Get child's attendance via parent ID 
+  getChildAttendance: async (parentId) => {
+    // Requires an ad-hoc endpoint to fetch this, assuming /api/parent/child-daily-log/{parent_id}
+    const response = await api.get(`/api/parent/child-daily-log/${parentId}`)
     return response.data
   },
+  
+  getChildLateRecords: async (parentId) => {
+    const response = await api.get(`/api/parent/child-late-records/${parentId}`)
+    return response.data
+  },
+  
+  getChildAbsentRecords: async (parentId) => {
+    const response = await api.get(`/api/parent/child-absent-records/${parentId}`)
+    return response.data
+  }
 }
 
 // ===========================
@@ -367,6 +380,12 @@ export const daywiseAttendanceAPI = {
   // Update attendance
   updateAttendance: async (attendanceId, data) => {
     const response = await api.put(`/api/attendance/daywise/${attendanceId}`, data)
+    return response.data
+  },
+
+  // Override attendance via toggle
+  overrideAttendance: async (divisionId, studentId, date, data) => {
+    const response = await api.patch(`/api/attendance/daywise/override/${divisionId}/${studentId}/${date}`, data)
     return response.data
   },
 

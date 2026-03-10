@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Webcam from "react-webcam";
 import { adminAPI } from "../services/api";
+import AttendanceAnalytics from "./components/AttendanceAnalytics";
 import "../styles/dashboard.css";
 function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -110,10 +111,27 @@ function AdminDashboard({ user, onLogout }) {
     username: "",
     password: ""
   });
+  const [analyticsData, setAnalyticsData] = useState([]);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
+
   // Load data on mount
   useEffect(() => {
     loadAllData();
   }, []);
+
+  useEffect(() => {
+    loadAnalyticsEngine();
+  }, [analyticsDays]);
+
+  const loadAnalyticsEngine = async () => {
+    try {
+      const data = await adminAPI.getAnalytics(analyticsDays);
+      setAnalyticsData(data);
+    } catch(err) {
+      console.error("Failed to fetch analytics:", err);
+    }
+  };
+
   const loadAllData = async () => {
     try {
       const [depts, cls, divs, studs, stf, subjs, btchs, prnts] =
@@ -126,7 +144,6 @@ function AdminDashboard({ user, onLogout }) {
           adminAPI.getSubjects(),
           adminAPI.getBatches(),
           adminAPI.getParents(),
-
         ]);
       setDepartments(depts);
       setClasses(cls);
@@ -136,7 +153,6 @@ function AdminDashboard({ user, onLogout }) {
       setSubjects(subjs);
       setBatches(btchs);
       setParents(prnts);
-
     } catch (error) {
       showMessage("error", "Failed to load data");
     }
@@ -155,6 +171,39 @@ function AdminDashboard({ user, onLogout }) {
       setLoadingAttendance(false);
     }
   };
+
+  // WebSocket setup for real-time updates
+  useEffect(() => {
+    let ws;
+    if (activeTab === "attendance" && attendanceDivision && attendanceDate) {
+      const sessionId = `${attendanceDivision}_${attendanceDate}`;
+      ws = new WebSocket(`ws://localhost:8000/ws/attendance/${sessionId}`);
+      
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'ATTENDANCE_UPDATE') {
+          setAttendanceRecords(prev => {
+            const newRecords = [...prev];
+            const index = newRecords.findIndex(r => r.student_id === data.student_id);
+            if (index !== -1) {
+              newRecords[index] = { ...newRecords[index], status: data.status, check_in_time: data.check_in_time, marked_method: data.marked_method };
+              return newRecords;
+            } else {
+              loadAttendanceRecords();
+              return prev;
+            }
+          });
+        } else if (data.type === 'ATTENDANCE_BULK_UPDATE') {
+          loadAttendanceRecords();
+        }
+      };
+      
+      ws.onerror = (error) => console.error("WebSocket error:", error);
+    }
+    return () => {
+      if (ws) ws.close();
+    };
+  }, [activeTab, attendanceDivision, attendanceDate]);
 
   // Handle attendance status update — optimistic UI with rollback
   const handleUpdateAttendance = async (studentId, newStatus) => {
@@ -598,23 +647,35 @@ function AdminDashboard({ user, onLogout }) {
         </div>
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
-          <div className="stats-grid">
-            <div className="stat-card">
-              <h3>{departments.length}</h3>
-              <p>Departments</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+            <div className="stats-grid">
+              <div className="stat-card">
+                <h3>{departments.length}</h3>
+                <p>Departments</p>
+              </div>
+              <div className="stat-card">
+                <h3>{students.length}</h3>
+                <p>Students</p>
+              </div>
+              <div className="stat-card">
+                <h3>{staff.length}</h3>
+                <p>Staff</p>
+              </div>
+              <div className="stat-card">
+                <h3>{divisions.length}</h3>
+                <p>Divisions</p>
+              </div>
             </div>
-            <div className="stat-card">
-              <h3>{students.length}</h3>
-              <p>Students</p>
-            </div>
-            <div className="stat-card">
-              <h3>{staff.length}</h3>
-              <p>Staff</p>
-            </div>
-            <div className="stat-card">
-              <h3>{divisions.length}</h3>
-              <p>Divisions</p>
-            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid #ccc', margin: '10px 0' }} />
+            
+            <h2 style={{ marginBottom: "0px", marginTop: "10px", fontSize: "24px" }}>Organization Attendance Analytics</h2>
+            <AttendanceAnalytics 
+                data={analyticsData}
+                departments={departments.map(d => d.name)}
+                dateRange={analyticsDays}
+                onDateRangeChange={(days) => setAnalyticsDays(days)}
+            />
           </div>
         )}
         {/* STRUCTURE TAB */}

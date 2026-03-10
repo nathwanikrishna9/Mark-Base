@@ -2,7 +2,6 @@
  * Parent Dashboard - View child's attendance data.
  * Features:
  * - View child's overall attendance
- * - View subject-wise attendance
  * - View late and absent records
  * - View daily attendance log
  */
@@ -17,7 +16,6 @@ ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Title, Tool
 
 function ParentDashboard({ user, onLogout }) {
   const [dashboard, setDashboard] = useState(null)
-  const [attendance, setAttendance] = useState([])
   const [dailyLog, setDailyLog] = useState([])
   const [lateRecords, setLateRecords] = useState(null)
   const [absentRecords, setAbsentRecords] = useState(null)
@@ -30,16 +28,17 @@ function ParentDashboard({ user, onLogout }) {
 
   const loadAllData = async () => {
     try {
-      const [dashData, attData, logData, lateData, absentData] = await Promise.all([
-        parentAPI.getDashboard(user.parent_id),
-        parentAPI.getChildAttendance(user.parent_id),
-        parentAPI.getChildDailyLog(user.parent_id, 30),
-        parentAPI.getChildLateRecords(user.parent_id),
-        parentAPI.getChildAbsentRecords(user.parent_id)
+      // The user object contains parent_id
+      const pId = user.parent_id || user.id;
+
+      const [dashData, logData, lateData, absentData] = await Promise.all([
+        parentAPI.getDashboard(pId),
+        parentAPI.getChildAttendance(pId), // returns the daily log
+        parentAPI.getChildLateRecords(pId),
+        parentAPI.getChildAbsentRecords(pId)
       ])
       
       setDashboard(dashData)
-      setAttendance(attData)
       setDailyLog(logData)
       setLateRecords(lateData)
       setAbsentRecords(absentData)
@@ -68,19 +67,36 @@ function ParentDashboard({ user, onLogout }) {
         dashboard.overall_statistics.absent
       ],
       backgroundColor: ['#4caf50', '#ff9800', '#f44336'],
+      borderWidth: 0
     }]
   } : null
 
-  const subjectChartData = {
-    labels: attendance.map(a => a.subject_name),
+
+  // Process data for a 7-day or 10-day bar chart showing recent attendance
+  // Reversing so that oldest is on the left, newest on the right
+  const recentDays = dashboard ? [...dashboard.last_7_days_attendance].reverse() : []
+  
+  const dailyChartData = {
+    labels: recentDays.map(a => {
+      const dateStr = a.date; 
+      const parsed = new Date(dateStr);
+      return `${parsed.getDate()}/${parsed.getMonth() + 1}`; 
+    }),
     datasets: [{
-      label: 'Attendance %',
-      data: attendance.map(a => a.percentage),
-      backgroundColor: attendance.map(a => 
-        a.percentage >= 75 ? '#4caf50' : '#f44336'
-      ),
+      label: 'Attendance Status (1=Present, 0.5=Late, 0=Absent)',
+      data: recentDays.map(a => {
+        if (a.status.toLowerCase() === 'present') return 1;
+        if (a.status.toLowerCase() === 'late') return 0.5;
+        return 0;
+      }),
+      backgroundColor: recentDays.map(a => {
+        if (a.status.toLowerCase() === 'present') return '#4caf50';
+        if (a.status.toLowerCase() === 'late') return '#ff9800';
+        return '#f44336';
+      }),
     }]
   }
+
 
   return (
     <div className="dashboard">
@@ -105,12 +121,6 @@ function ParentDashboard({ user, onLogout }) {
             onClick={() => setActiveTab('overview')}
           >
             Overview
-          </button>
-          <button
-            className={`tab ${activeTab === 'subjects' ? 'active' : ''}`}
-            onClick={() => setActiveTab('subjects')}
-          >
-            Subjects
           </button>
           <button
             className={`tab ${activeTab === 'daily' ? 'active' : ''}`}
@@ -138,8 +148,8 @@ function ParentDashboard({ user, onLogout }) {
             <div className="grid grid-3">
               <div className="card stat-card">
                 <h3>Overall Attendance</h3>
-                <div className="stat-large">{dashboard.overall_statistics.percentage}%</div>
-                <p className="text-muted">{dashboard.overall_statistics.total} sessions</p>
+                <div className="stat-large">{dashboard.overall_statistics.percentage.toFixed(1)}%</div>
+                <p className="text-muted">{dashboard.overall_statistics.total} total days logged</p>
               </div>
               
               <div className="card stat-card">
@@ -159,124 +169,92 @@ function ParentDashboard({ user, onLogout }) {
               <div className="card">
                 <div className="card-header">Attendance Distribution</div>
                 {overallChartData && (
-                  <div className="chart-container">
+                  <div className="chart-container" style={{ position: 'relative', minHeight: '300px' }}>
                     <Pie data={overallChartData} options={{ maintainAspectRatio: false }} />
                   </div>
                 )}
               </div>
 
-              <div className="card">
-                <div className="card-header">Last 7 Days</div>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboard.last_7_days_attendance.map((record, index) => (
-                      <tr key={index}>
-                        <td>{record.date}</td>
-                        <td>
-                          <span className={`badge badge-${record.status.toLowerCase()}`}>
-                            {record.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+               <div className="card">
+                <div className="card-header">Last {recentDays.length} Days View</div>
+                {recentDays.length > 0 ? (
+                  <div className="chart-container" style={{ position: 'relative', minHeight: '300px' }}>
+                    <Bar 
+                      data={dailyChartData} 
+                      options={{
+                        maintainAspectRatio: false,
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            max: 1,
+                            ticks: {
+                              callback: function(value) {
+                                if (value === 1) return 'Present';
+                                if (value === 0.5) return 'Late';
+                                if (value === 0) return 'Absent';
+                                return '';
+                              }
+                            }
+                          }
+                        },
+                        plugins: {
+                          tooltip: {
+                            callbacks: {
+                              label: function(context) {
+                                const val = context.raw;
+                                if (val === 1) return 'Present';
+                                if (val === 0.5) return 'Late';
+                                return 'Absent';
+                              }
+                            }
+                          }
+                        }
+                      }} 
+                    />
+                  </div>
+                ) : (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
+                        No recent attendance data.
+                    </div>
+                )}
+               </div>
             </div>
           </>
         )}
 
-        {/* Subjects Tab */}
-        {activeTab === 'subjects' && (
-          <>
-            <div className="card">
-              <div className="card-header">Subject-wise Attendance</div>
-              <div className="chart-container">
-                <Bar 
-                  data={subjectChartData} 
-                  options={{
-                    maintainAspectRatio: false,
-                    scales: {
-                      y: {
-                        beginAtZero: true,
-                        max: 100
-                      }
-                    }
-                  }} 
-                />
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header">Details</div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Subject</th>
-                    <th>Total</th>
-                    <th>Present</th>
-                    <th>Late</th>
-                    <th>Absent</th>
-                    <th>Percentage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendance.map((subj) => (
-                    <tr key={subj.subject_id}>
-                      <td>{subj.subject_name}</td>
-                      <td>{subj.total}</td>
-                      <td className="text-success">{subj.present}</td>
-                      <td className="text-warning">{subj.late}</td>
-                      <td className="text-danger">{subj.absent}</td>
-                      <td>
-                        <span className={`badge ${subj.percentage >= 75 ? 'badge-present' : 'badge-absent'}`}>
-                          {subj.percentage}%
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
 
         {/* Daily Log Tab */}
         {activeTab === 'daily' && (
           <div className="card">
             <div className="card-header">Daily Attendance Log (Last 30 Days)</div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Day</th>
-                  <th>Subject</th>
-                  <th>Status</th>
-                  <th>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyLog.map((record, index) => (
-                  <tr key={index}>
-                    <td>{record.date}</td>
-                    <td>{record.day}</td>
-                    <td>{record.subject}</td>
-                    <td>
-                      <span className={`badge badge-${record.status.toLowerCase()}`}>
-                        {record.status}
-                      </span>
-                    </td>
-                    <td>{record.marked_at}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-responsive">
+                <table className="table">
+                <thead>
+                    <tr>
+                    <th>Date</th>
+                    <th>Day</th>
+                    <th>Status</th>
+                    <th>Time In</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {dailyLog.length > 0 ? dailyLog.map((record, index) => (
+                    <tr key={index}>
+                        <td>{record.date}</td>
+                        <td>{record.day}</td>
+                        <td>
+                        <span className={`badge badge-${record.status.toLowerCase() === 'present' ? 'success' : (record.status.toLowerCase() === 'late' ? 'warning' : 'danger')}`}>
+                            {record.status}
+                        </span>
+                        </td>
+                        <td>{record.marked_at !== 'N/A' ? record.marked_at : '-'}</td>
+                    </tr>
+                    )) : (
+                        <tr><td colSpan="4" style={{textAlign:"center", padding: "10px"}}>No daily log records available.</td></tr>
+                    )}
+                </tbody>
+                </table>
+            </div>
           </div>
         )}
 
@@ -284,26 +262,26 @@ function ParentDashboard({ user, onLogout }) {
         {activeTab === 'late' && lateRecords && (
           <div className="card">
             <div className="card-header">Late Entries ({lateRecords.total_late_entries})</div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Subject</th>
-                  <th>Marked At</th>
-                  <th>Delay (mins)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lateRecords.late_records.map((record, index) => (
-                  <tr key={index}>
-                    <td>{record.date}</td>
-                    <td>{record.subject}</td>
-                    <td>{record.marked_at}</td>
-                    <td className="text-warning">{record.delay_minutes}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-responsive">
+                <table className="table">
+                <thead>
+                    <tr>
+                    <th>Date</th>
+                    <th>Marked At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {lateRecords.late_records.length > 0 ? lateRecords.late_records.map((record, index) => (
+                    <tr key={index}>
+                        <td>{record.date}</td>
+                        <td>{record.marked_at}</td>
+                    </tr>
+                    )) : (
+                        <tr><td colSpan="2" style={{textAlign:"center", padding: "10px"}}>No late records found.</td></tr>
+                    )}
+                </tbody>
+                </table>
+            </div>
           </div>
         )}
 
@@ -311,26 +289,26 @@ function ParentDashboard({ user, onLogout }) {
         {activeTab === 'absent' && absentRecords && (
           <div className="card">
             <div className="card-header">Absences ({absentRecords.total_absences})</div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Day</th>
-                  <th>Subject</th>
-                  <th>Session Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {absentRecords.absent_records.map((record, index) => (
-                  <tr key={index}>
-                    <td>{record.date}</td>
-                    <td>{record.day}</td>
-                    <td>{record.subject}</td>
-                    <td>{record.session_time}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-responsive">
+                <table className="table">
+                <thead>
+                    <tr>
+                    <th>Date</th>
+                    <th>Day</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {absentRecords.absent_records.length > 0 ? absentRecords.absent_records.map((record, index) => (
+                    <tr key={index}>
+                        <td>{record.date}</td>
+                        <td>{record.day}</td>
+                    </tr>
+                    )) : (
+                         <tr><td colSpan="2" style={{textAlign:"center", padding: "10px"}}>No absences recorded.</td></tr>
+                    )}
+                </tbody>
+                </table>
+            </div>
           </div>
         )}
       </div>

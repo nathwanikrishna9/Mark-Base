@@ -11,9 +11,11 @@ from datetime import date
 from app.core.database import get_db
 from app.models import (
     User, Department, Class, Division, Batch, Subject,
-    Staff, Student, Parent
+    Staff, Student, Parent, DailyAttendance
 )
 from app.utils.security import get_password_hash
+import asyncio
+from app.websocket_manager import manager
 
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
@@ -634,6 +636,80 @@ def update_parent(parent_id: int, request: UpdateParentRequest, db: Session = De
 
 # ==================== ATTENDANCE MANAGEMENT ENDPOINTS ====================
 
+@router.get("/analytics")
+def get_attendance_analytics(days: int = 30, db: Session = Depends(get_db)):
+    """
+    Get aggregated day-wise analytics for the past 'n' days grouped by Departments.
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import func
+    
+    end_date = datetime.today().date()
+    start_date = end_date - timedelta(days=days)
+    
+    # We join DailyAttendance -> Student -> Division -> Class -> Department
+    records = db.query(
+        DailyAttendance.date,
+        Department.name.label("department"),
+        DailyAttendance.status,
+        func.count(DailyAttendance.id).label("count")
+    ).join(
+        Student, Student.id == DailyAttendance.student_id
+    ).join(
+        Division, Division.id == Student.division_id
+    ).join(
+        Class, Class.id == Division.class_id
+    ).join(
+        Department, Department.id == Class.department_id
+    ).filter(
+        DailyAttendance.date >= start_date,
+        DailyAttendance.date <= end_date
+    ).group_by(
+        DailyAttendance.date,
+        Department.name,
+        DailyAttendance.status
+    ).all()
+    
+    # Process into daily arrays
+    # Dict form: {date: {department: {total: 0, present: 0, absent: 0, late: 0}}}
+    aggregated = {}
+    
+    for row in records:
+        date_str = str(row.date)
+        dept = row.department
+        status = row.status
+        count = row.count
+        
+        if date_str not in aggregated:
+            aggregated[date_str] = {}
+            
+        if dept not in aggregated[date_str]:
+            aggregated[date_str][dept] = {"total": 0, "present": 0, "absent": 0, "late": 0}
+            
+        aggregated[date_str][dept][status] += count
+        aggregated[date_str][dept]["total"] += count
+        
+    # Flatten strictly for the UI analytics engine dataset structure:
+    # { date: string, department: string, present: number, total: number, absent: number, late: number }
+    output = []
+    
+    for date_str, depts in aggregated.items():
+        for dept, stats in depts.items():
+            output.append({
+                "date": date_str,
+                "department": dept,
+                "present": stats["present"],
+                "absent": stats["absent"],
+                "late": stats["late"],
+                "total": stats["total"]
+            })
+            
+    # Always sort ascending chronological
+    output.sort(key=lambda x: x["date"])
+
+    return output
+
+
 @router.put("/attendance")
 def update_attendance(request: UpdateAttendanceRequest, db: Session = Depends(get_db)):
     """
@@ -641,7 +717,6 @@ def update_attendance(request: UpdateAttendanceRequest, db: Session = Depends(ge
     Can mark students as present even if they didn't mark their attendance.
     """
     from datetime import datetime
-    from app.models import DailyAttendance
     
     try:
         attendance_date = datetime.strptime(request.date, "%Y-%m-%d").date()
@@ -674,9 +749,9 @@ def update_attendance(request: UpdateAttendanceRequest, db: Session = Depends(ge
     # Determine check-in time based on status (aligned to current attendance window)
     from datetime import time as dt_time
     if request.status == "present":
-        check_time = dt_time(11, 0)  # On-time (within present window)
+        check_time = dt_time(12, 0)  # On-time (within present window)
     elif request.status == "late":
-        check_time = dt_time(11, 30)  # Late (within late window)
+        check_time = dt_time(12, 16)  # Late (within late window)
     else:
         check_time = dt_time(23, 59)  # Absent - end of day
     
@@ -704,6 +779,16 @@ def update_attendance(request: UpdateAttendanceRequest, db: Session = Depends(ge
         db.add(attendance)
     
     db.commit()
+    
+    # Broadcast WS update
+    asyncio.run(manager.broadcast({
+        "type": "ATTENDANCE_UPDATE",
+        "student_id": request.student_id,
+        "date": str(attendance_date),
+        "status": request.status,
+        "check_in_time": str(check_time),
+        "marked_method": "manual"
+    }, f"{student.division_id}_{str(attendance_date)}"))
     
     return {
         "message": f"Attendance updated to '{request.status}'",
@@ -737,17 +822,41 @@ def get_division_attendance_for_admin(
     students = db.query(Student).filter(Student.division_id == division_id).all()
     
     attendance_records = []
+    
+    # Optional logic to sync auto-absent bounds
+    from app.models import AttendanceSession
+    from datetime import time
+    session = db.query(AttendanceSession).filter(
+        AttendanceSession.division_id == division_id,
+        AttendanceSession.date == attendance_date
+    ).first()
+    
+    late_cutoff_passed = False
+    if date == str(datetime.today().date()):
+        if datetime.now().time() >= time(12, 20):
+            late_cutoff_passed = True
+    elif date < str(datetime.today().date()):
+        late_cutoff_passed = True # Past days are implicitly closed
+
+    is_closed = (session and session.status == 'closed') or late_cutoff_passed
+
     for student in students:
         attendance = db.query(DailyAttendance).filter(
             DailyAttendance.student_id == student.id,
             DailyAttendance.date == attendance_date
         ).first()
         
+        final_status = "unmarked"
+        if attendance:
+            final_status = attendance.status
+        elif is_closed:
+            final_status = "absent"
+            
         attendance_records.append({
             "student_id": student.id,
             "student_name": f"{student.first_name} {student.last_name}",
             "roll_number": student.roll_number,
-            "status": attendance.status if attendance else "unmarked",
+            "status": final_status,
             "check_in_time": str(attendance.check_in_time) if attendance else None,
             "marked_method": attendance.marked_method if attendance else None,
             "notes": attendance.notes if attendance else None,
@@ -775,7 +884,6 @@ def bulk_update_attendance(request: BulkUpdateAttendanceRequest, db: Session = D
     Supports marking all students or only unmarked ones.
     """
     from datetime import datetime, time as dt_time
-    from app.models import DailyAttendance
 
     try:
         attendance_date = datetime.strptime(request.date, "%Y-%m-%d").date()
@@ -795,7 +903,7 @@ def bulk_update_attendance(request: BulkUpdateAttendanceRequest, db: Session = D
         raise HTTPException(status_code=404, detail="Division not found")
 
     # Determine check-in time
-    time_map = {"present": dt_time(11, 0), "late": dt_time(11, 30), "absent": dt_time(23, 59)}
+    time_map = {"present": dt_time(12, 0), "late": dt_time(12, 16), "absent": dt_time(23, 59)}
     check_time = time_map[request.status]
 
     # Get target students
@@ -834,6 +942,14 @@ def bulk_update_attendance(request: BulkUpdateAttendanceRequest, db: Session = D
         updated += 1
 
     db.commit()
+    
+    # Broadcast empty/generic WS update for bulk reload
+    asyncio.run(manager.broadcast({
+        "type": "ATTENDANCE_BULK_UPDATE",
+        "date": str(attendance_date),
+        "division_id": request.division_id
+    }, f"{request.division_id}_{str(attendance_date)}"))
+    
     return {"updated": updated, "skipped": skipped, "total": len(students)}
 
 

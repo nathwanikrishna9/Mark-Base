@@ -5,11 +5,13 @@ Implements 11:00-11:30 grace period logic.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from datetime import date, datetime, time
 from app.core.database import get_db
 from app.models import DailyAttendance, Student, Division, AttendanceSession
 from pydantic import BaseModel
+import asyncio
+from app.websocket_manager import manager
 
 router = APIRouter(prefix="/api/attendance/daywise", tags=["Day-wise Attendance"])
 
@@ -62,13 +64,13 @@ def mark_attendance(
         check_time = datetime.strptime(request.check_in_time, "%H:%M:%S").time()
         today = date.today()
         
-        # Get grace period (testing: 23:00-23:10 present, 23:10-23:20 late)
-        grace_start = time(23, 0)
-        grace_end = time(23, 10, 0)
-        late_cutoff = time(23, 20, 0)
+        # Get grace period: 12:00-12:15 present, 12:15-12:20 late
+        grace_start = time(12, 0)
+        grace_end = time(12, 15, 0)
+        late_cutoff = time(12, 20, 0)
         
         if check_time < grace_start:
-            raise HTTPException(status_code=400, detail="Attendance window opens at 11:00 PM")
+            raise HTTPException(status_code=400, detail="Attendance window opens at 12:00 PM")
             
         # Determine status
         if check_time <= grace_end:
@@ -113,6 +115,17 @@ def mark_attendance(
                 existing.marked_method = request.method
                 db.commit()
                 db.refresh(existing)
+                
+                # Broadcast WS update
+                asyncio.run(manager.broadcast({
+                    "type": "ATTENDANCE_UPDATE",
+                    "student_id": existing.student_id,
+                    "date": str(today),
+                    "status": existing.status,
+                    "check_in_time": str(existing.check_in_time),
+                    "marked_method": existing.marked_method
+                }, f"{student.division_id}_{str(today)}"))
+                
                 return _serialize_attendance(existing)
             # Otherwise truly idempotent - already marked by face/manual
             return _serialize_attendance(existing)
@@ -131,6 +144,16 @@ def mark_attendance(
         db.add(attendance)
         db.commit()
         db.refresh(attendance)
+        
+        # Broadcast WS update
+        asyncio.run(manager.broadcast({
+            "type": "ATTENDANCE_UPDATE",
+            "student_id": attendance.student_id,
+            "date": str(attendance.date),
+            "status": attendance.status,
+            "check_in_time": str(attendance.check_in_time),
+            "marked_method": attendance.marked_method
+        }, f"{student.division_id}_{str(today)}"))
         
         return _serialize_attendance(attendance)
     except HTTPException:
@@ -223,10 +246,10 @@ def get_division_attendance(
         AttendanceSession.date == date
     ).first()
     
-    # If the session is explicitly closed, OR it's past 23:20 today, unmarked = absent
+    # If the session is explicitly closed, OR it's past 12:20 today, unmarked = absent
     late_cutoff_passed = False
     if date == str(datetime.today().date()):
-        if datetime.now().time() >= time(23, 20):
+        if datetime.now().time() >= time(12, 20):
             late_cutoff_passed = True
     elif date < str(datetime.today().date()):
         late_cutoff_passed = True # Past days are implicitly closed
@@ -261,3 +284,74 @@ def get_division_attendance(
         "total_students": len(students),
         "records": attendance_records
     }
+
+class OverrideAttendanceRequest(BaseModel):
+    status: str
+    updated_by: int
+
+@router.patch("/override/{division_id}/{student_id}/{date}")
+def override_attendance(
+    division_id: int,
+    student_id: int,
+    date_str: str,
+    request: OverrideAttendanceRequest,
+    db: Session = Depends(get_db)
+):
+    """Override attendance status via UI toggle"""
+    try:
+        attendance_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        
+    student = db.query(Student).filter(Student.id == student_id, Student.division_id == division_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found in this division")
+        
+    if request.status not in ['present', 'late', 'absent']:
+        raise HTTPException(status_code=400, detail="Invalid status")
+        
+    existing = db.query(DailyAttendance).filter(
+        DailyAttendance.student_id == student_id,
+        DailyAttendance.date == attendance_date
+    ).first()
+    
+    check_time_map = {
+        'present': time(12, 0),
+        'late': time(12, 16),
+        'absent': time(23, 59)
+    }
+    
+    if existing:
+        existing.status = request.status
+        existing.edited_by = request.updated_by
+        existing.edited_at = datetime.utcnow()
+        if existing.marked_method == 'system' and request.status != 'absent':
+             existing.check_in_time = check_time_map[request.status]
+             existing.marked_method = 'manual'
+    else:
+        existing = DailyAttendance(
+            student_id=student_id,
+            division_id=division_id,
+            date=attendance_date,
+            check_in_time=check_time_map[request.status],
+            status=request.status,
+            edited_by=request.updated_by,
+            edited_at=datetime.utcnow(),
+            marked_method='manual'
+        )
+        db.add(existing)
+        
+    db.commit()
+    db.refresh(existing)
+    
+    # Broadcast to websocket
+    asyncio.run(manager.broadcast({
+        "type": "ATTENDANCE_UPDATE",
+        "student_id": student_id,
+        "date": date_str,
+        "status": existing.status,
+        "check_in_time": str(existing.check_in_time),
+        "marked_method": "manual"
+    }, f"{division_id}_{date_str}"))
+    
+    return _serialize_attendance(existing)
