@@ -102,6 +102,9 @@ function AdminDashboard({ user, onLogout }) {
   }, [divisions, attendanceClass]);
 
   const [parentForm, setParentForm] = useState({
+    department_id: "",
+    class_id: "",
+    division_id: "",
     student_id: "",
     first_name: "",
     last_name: "",
@@ -127,7 +130,7 @@ function AdminDashboard({ user, onLogout }) {
     try {
       const data = await adminAPI.getAnalytics(analyticsDays);
       setAnalyticsData(data);
-    } catch(err) {
+    } catch (err) {
       console.error("Failed to fetch analytics:", err);
     }
   };
@@ -178,7 +181,7 @@ function AdminDashboard({ user, onLogout }) {
     if (activeTab === "attendance" && attendanceDivision && attendanceDate) {
       const sessionId = `${attendanceDivision}_${attendanceDate}`;
       ws = new WebSocket(`ws://localhost:8000/ws/attendance/${sessionId}`);
-      
+
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'ATTENDANCE_UPDATE') {
@@ -197,7 +200,7 @@ function AdminDashboard({ user, onLogout }) {
           loadAttendanceRecords();
         }
       };
-      
+
       ws.onerror = (error) => console.error("WebSocket error:", error);
     }
     return () => {
@@ -497,7 +500,7 @@ function AdminDashboard({ user, onLogout }) {
       await adminAPI.createDivision(payload);
       showMessage("success", "Division created successfully!");
       setShowDivisionForm(false);
-        setDivisionForm({ name: "", department_id: "", class_id: "" });
+      setDivisionForm({ name: "", department_id: "", class_id: "" });
       loadAllData();
     } catch (error) {
       const errorMsg =
@@ -668,13 +671,13 @@ function AdminDashboard({ user, onLogout }) {
             </div>
 
             <hr style={{ border: 'none', borderTop: '1px solid #ccc', margin: '10px 0' }} />
-            
+
             <h2 style={{ marginBottom: "0px", marginTop: "10px", fontSize: "24px" }}>Organization Attendance Analytics</h2>
-            <AttendanceAnalytics 
-                data={analyticsData}
-                departments={departments.map(d => d.name)}
-                dateRange={analyticsDays}
-                onDateRangeChange={(days) => setAnalyticsDays(days)}
+            <AttendanceAnalytics
+              data={analyticsData}
+              departments={departments.map(d => d.name)}
+              dateRange={analyticsDays}
+              onDateRangeChange={(days) => setAnalyticsDays(days)}
             />
           </div>
         )}
@@ -1048,8 +1051,8 @@ function AdminDashboard({ user, onLogout }) {
                         );
                         const dept = cls
                           ? departments.find(
-                              (item) => item.id === cls.department_id,
-                            )
+                            (item) => item.id === cls.department_id,
+                          )
                           : null;
                         const departmentLabel = dept
                           ? `${dept.name} (${dept.code})`
@@ -1557,7 +1560,7 @@ function AdminDashboard({ user, onLogout }) {
                         showMessage(
                           "error",
                           error.response?.data?.detail ||
-                            "Failed to create staff",
+                          "Failed to create staff",
                         );
                       }
                     }}
@@ -1791,6 +1794,9 @@ function AdminDashboard({ user, onLogout }) {
                         showMessage("success", "Parent account created!");
                         setShowParentForm(false);
                         setParentForm({
+                          department_id: "",
+                          class_id: "",
+                          division_id: "",
                           student_id: "",
                           first_name: "",
                           last_name: "",
@@ -1805,7 +1811,7 @@ function AdminDashboard({ user, onLogout }) {
                         showMessage(
                           "error",
                           error.response?.data?.detail ||
-                            "Failed to create parent",
+                          "Failed to create parent",
                         );
                       }
                     }}
@@ -1817,10 +1823,95 @@ function AdminDashboard({ user, onLogout }) {
                     </div>
                     <div className="form-row">
                       <div className="form-group">
+                        <label>Department *</label>
+                        <select
+                          required
+                          value={parentForm.department_id}
+                          onChange={(e) =>
+                            setParentForm({
+                              ...parentForm,
+                              department_id: e.target.value,
+                              class_id: "",
+                              division_id: "",
+                              student_id: "",
+                            })
+                          }
+                          disabled={departments.length === 0}
+                        >
+                          <option value="">Select Department</option>
+                          {departments.map((dept) => (
+                            <option key={dept.id} value={dept.id}>
+                              {dept.name} ({dept.code})
+                            </option>
+                          ))}
+                        </select>
+                        {departments.length === 0 && <small className="text-muted text-warning">Loading departments...</small>}
+                      </div>
+                      <div className="form-group">
+                        <label>Class *</label>
+                        <select
+                          required
+                          value={parentForm.class_id}
+                          disabled={!parentForm.department_id || classes.length === 0}
+                          onChange={(e) =>
+                            setParentForm({
+                              ...parentForm,
+                              class_id: e.target.value,
+                              division_id: "",
+                              student_id: "",
+                            })
+                          }
+                        >
+                          <option value="">Select Class</option>
+                          {classes
+                            .filter(
+                              (c) =>
+                                c.department_id === parseInt(parentForm.department_id),
+                            )
+                            .map((cls) => (
+                              <option key={cls.id} value={cls.id}>
+                                {cls.name}
+                              </option>
+                            ))}
+                        </select>
+                        {parentForm.department_id && classes.length === 0 && <small className="text-muted text-warning">Loading classes...</small>}
+                      </div>
+                      <div className="form-group">
+                        <label>Division *</label>
+                        <select
+                          required
+                          value={parentForm.division_id}
+                          disabled={!parentForm.class_id || divisions.length === 0}
+                          onChange={(e) =>
+                            setParentForm({
+                              ...parentForm,
+                              division_id: e.target.value,
+                              student_id: "",
+                            })
+                          }
+                        >
+                          <option value="">Select Division</option>
+                          {divisions
+                            .filter(
+                              (d) =>
+                                d.class_id === parseInt(parentForm.class_id),
+                            )
+                            .map((div) => (
+                              <option key={div.id} value={div.id}>
+                                Division {div.name}
+                              </option>
+                            ))}
+                        </select>
+                        {parentForm.class_id && divisions.length === 0 && <small className="text-muted text-warning">Loading divisions...</small>}
+                      </div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group">
                         <label>Select Student (Child) *</label>
                         <select
                           required
                           value={parentForm.student_id}
+                          disabled={!parentForm.division_id || students.length === 0}
                           onChange={(e) =>
                             setParentForm({
                               ...parentForm,
@@ -1829,15 +1920,17 @@ function AdminDashboard({ user, onLogout }) {
                           }
                         >
                           <option value="">Select Student</option>
-                          {students.map((student) => (
-                            <option key={student.id} value={student.id}>
-                              {student.roll_number} - {student.first_name}{" "}
-                              {student.last_name}
-                            </option>
-                          ))}
+                          {students
+                            .filter((s) => s.division_id === parseInt(parentForm.division_id))
+                            .map((student) => (
+                              <option key={student.id} value={student.id}>
+                                {student.roll_number} - {student.first_name}{" "}
+                                {student.last_name}
+                              </option>
+                            ))}
                         </select>
                         <small className="text-muted">
-                          This is the student (ward) for this parent account
+                          {!parentForm.division_id ? "Select a division first to load students" : "This is the student (ward) for this parent account"}
                         </small>
                       </div>
                       <div className="form-group">
