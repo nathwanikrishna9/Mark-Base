@@ -4,6 +4,7 @@
  * - View child's overall attendance
  * - View late and absent records
  * - View daily attendance log
+ * - Switch between multiple children (child switcher dropdown)
  */
 
 import React, { useState, useEffect } from 'react'
@@ -22,20 +23,51 @@ function ParentDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('overview')
   const [loading, setLoading] = useState(true)
 
+  // Multi-child support
+  const [children, setChildren] = useState(user.children || [])
+  const [selectedChildId, setSelectedChildId] = useState(null)
+  const [childDropdownOpen, setChildDropdownOpen] = useState(false)
+
   useEffect(() => {
-    loadAllData()
+    // If children came from login data, use them; otherwise fetch from API
+    if (user.children && user.children.length > 0) {
+      setChildren(user.children)
+      setSelectedChildId(user.children[0].student_id)
+    } else {
+      // Fetch children from API
+      loadChildren()
+    }
   }, [])
 
-  const loadAllData = async () => {
+  useEffect(() => {
+    if (selectedChildId) {
+      loadAllData(selectedChildId)
+    }
+  }, [selectedChildId])
+
+  const loadChildren = async () => {
     try {
-      // The user object contains parent_id
-      const pId = user.parent_id || user.id;
+      const pId = user.parent_id || user.id
+      const childrenData = await parentAPI.getChildren(pId)
+      setChildren(childrenData)
+      if (childrenData.length > 0) {
+        setSelectedChildId(childrenData[0].student_id)
+      }
+    } catch (err) {
+      console.error('Failed to load children:', err)
+    }
+  }
+
+  const loadAllData = async (studentId) => {
+    setLoading(true)
+    try {
+      const pId = user.parent_id || user.id
 
       const [dashData, logData, lateData, absentData] = await Promise.all([
-        parentAPI.getDashboard(pId),
-        parentAPI.getChildAttendance(pId), // returns the daily log
-        parentAPI.getChildLateRecords(pId),
-        parentAPI.getChildAbsentRecords(pId)
+        parentAPI.getDashboard(pId, studentId),
+        parentAPI.getChildAttendance(pId, studentId),
+        parentAPI.getChildLateRecords(pId, studentId),
+        parentAPI.getChildAbsentRecords(pId, studentId)
       ])
       
       setDashboard(dashData)
@@ -48,6 +80,13 @@ function ParentDashboard({ user, onLogout }) {
       setLoading(false)
     }
   }
+
+  const handleChildSwitch = (studentId) => {
+    setSelectedChildId(studentId)
+    setChildDropdownOpen(false)
+  }
+
+  const selectedChild = children.find(c => c.student_id === selectedChildId)
 
   if (loading) {
     return (
@@ -72,8 +111,7 @@ function ParentDashboard({ user, onLogout }) {
   } : null
 
 
-  // Process data for a 7-day or 10-day bar chart showing recent attendance
-  // Reversing so that oldest is on the left, newest on the right
+  // Process data for a 7-day bar chart showing recent attendance
   const recentDays = dashboard ? [...dashboard.last_7_days_attendance].reverse() : []
   
   const dailyChartData = {
@@ -106,11 +144,159 @@ function ParentDashboard({ user, onLogout }) {
           <p>Welcome, {user.name}</p>
           {dashboard && (
             <p className="text-muted">
-              Child: {dashboard.child_info.name} ({dashboard.child_info.roll_number})
+              Viewing: {dashboard.child_info.name} ({dashboard.child_info.roll_number})
+              {dashboard.child_info.division && ` — ${dashboard.child_info.division}`}
             </p>
           )}
         </div>
-        <button className="btn btn-danger" onClick={onLogout}>Logout</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Child Switcher Dropdown */}
+          {children.length > 1 && (
+            <div className="child-switcher" style={{ position: 'relative' }}>
+              <button
+                className="btn btn-child-switcher"
+                onClick={() => setChildDropdownOpen(!childDropdownOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span style={{ fontSize: '16px' }}>👶</span>
+                <span>{selectedChild ? selectedChild.name : 'Select Child'}</span>
+                <span style={{ 
+                  fontSize: '10px', 
+                  transition: 'transform 0.2s',
+                  transform: childDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)'
+                }}>
+                  ▼
+                </span>
+              </button>
+              
+              {childDropdownOpen && (
+                <>
+                  {/* Backdrop to close dropdown */}
+                  <div 
+                    style={{
+                      position: 'fixed',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      zIndex: 99
+                    }}
+                    onClick={() => setChildDropdownOpen(false)}
+                  />
+                  <div
+                    className="child-dropdown"
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      right: 0,
+                      minWidth: '280px',
+                      background: '#fff',
+                      borderRadius: '12px',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
+                      border: '1px solid rgba(0, 0, 0, 0.08)',
+                      zIndex: 100,
+                      overflow: 'hidden',
+                      animation: 'slideDown 0.2s ease'
+                    }}
+                  >
+                    <div style={{
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #eee',
+                      fontSize: '12px',
+                      color: '#888',
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      Switch Child
+                    </div>
+                    {children.map((child) => (
+                      <div
+                        key={child.student_id}
+                        onClick={() => handleChildSwitch(child.student_id)}
+                        style={{
+                          padding: '12px 16px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          borderBottom: '1px solid #f5f5f5',
+                          background: child.student_id === selectedChildId 
+                            ? 'linear-gradient(135deg, #f0f4ff 0%, #e8ecff 100%)' 
+                            : '#fff',
+                          transition: 'background 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (child.student_id !== selectedChildId)
+                            e.currentTarget.style.background = '#f8f9fa'
+                        }}
+                        onMouseLeave={(e) => {
+                          if (child.student_id !== selectedChildId)
+                            e.currentTarget.style.background = '#fff'
+                        }}
+                      >
+                        <div style={{
+                          width: '36px',
+                          height: '36px',
+                          borderRadius: '50%',
+                          background: child.student_id === selectedChildId 
+                            ? 'linear-gradient(135deg, #667eea, #764ba2)' 
+                            : '#e0e0e0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: child.student_id === selectedChildId ? '#fff' : '#666',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          flexShrink: 0
+                        }}>
+                          {child.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ 
+                            fontWeight: '600', 
+                            fontSize: '14px', 
+                            color: '#333' 
+                          }}>
+                            {child.name}
+                          </div>
+                          <div style={{ 
+                            fontSize: '12px', 
+                            color: '#888',
+                            marginTop: '2px'
+                          }}>
+                            {child.roll_number}
+                            {child.department && ` • ${child.department}`}
+                            {child.class_name && ` • ${child.class_name}`}
+                            {child.division && ` — Div ${child.division}`}
+                          </div>
+                        </div>
+                        {child.student_id === selectedChildId && (
+                          <span style={{ color: '#667eea', fontSize: '16px' }}>✓</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <button className="btn btn-danger" onClick={onLogout}>Logout</button>
+        </div>
       </div>
 
       <div className="container">

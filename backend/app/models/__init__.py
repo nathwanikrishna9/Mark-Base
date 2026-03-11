@@ -12,6 +12,7 @@ from .subject import Subject
 from .staff import Staff
 from .student import Student
 from .parent import Parent
+from .parent_student import ParentStudent
 from .attendance import (
     DailyAttendance,
     GracePeriod,
@@ -29,6 +30,7 @@ __all__ = [
     "Staff",
     "Student",
     "Parent",
+    "ParentStudent",
     # Day-wise attendance only
     "DailyAttendance",
     "GracePeriod",

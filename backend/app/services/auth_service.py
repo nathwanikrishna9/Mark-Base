@@ -5,7 +5,7 @@ Supports multiple authentication methods based on user role.
 
 from sqlalchemy.orm import Session
 from typing import Optional, Dict
-from app.models import User, Student, Staff
+from app.models import User, Student, Staff, ParentStudent
 from app.utils.security import verify_password, create_access_token
 from app.utils.face_recognition import face_service
 
@@ -66,7 +66,51 @@ class AuthService:
         elif user.role == "parent" and user.parent:
             user_info["parent_id"] = user.parent.id
             user_info["name"] = f"{user.parent.first_name} {user.parent.last_name}"
-            user_info["linked_student_id"] = user.parent.student_id
+            
+            # Get all linked children via association table
+            parent_student_links = db.query(ParentStudent).filter(
+                ParentStudent.parent_id == user.parent.id
+            ).all()
+            
+            children = []
+            for link in parent_student_links:
+                student = db.query(Student).filter(Student.id == link.student_id).first()
+                if student:
+                    division_name = student.division.name if student.division else "N/A"
+                    from app.models import Class
+                    class_name = ""
+                    dept_name = ""
+                    if student.division and student.division.class_:
+                        class_name = student.division.class_.name
+                        if student.division.class_.department:
+                            dept_name = student.division.class_.department.name
+                    children.append({
+                        "student_id": student.id,
+                        "name": f"{student.first_name} {student.last_name}",
+                        "roll_number": student.roll_number,
+                        "division": division_name,
+                        "class_name": class_name,
+                        "department": dept_name
+                    })
+            
+            # Fallback: if no association records, use the legacy student_id
+            if not children and user.parent.student_id:
+                student = db.query(Student).filter(Student.id == user.parent.student_id).first()
+                if student:
+                    division_name = student.division.name if student.division else "N/A"
+                    children.append({
+                        "student_id": student.id,
+                        "name": f"{student.first_name} {student.last_name}",
+                        "roll_number": student.roll_number,
+                        "division": division_name,
+                        "class_name": "",
+                        "department": ""
+                    })
+            
+            user_info["children"] = children
+            # Set linked_student_id to first child for backward compatibility
+            if children:
+                user_info["linked_student_id"] = children[0]["student_id"]
         
         return user_info
     

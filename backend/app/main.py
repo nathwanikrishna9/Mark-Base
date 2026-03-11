@@ -14,7 +14,7 @@ app = FastAPI(
 # Configure CORS - Allow all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001", "http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,7 +38,7 @@ async def startup_event():
     print("  MARKBASE - DAY-WISE ATTENDANCE SYSTEM")
     print("=" * 60)
     print("[OK] Day-wise Attendance: ACTIVE")
-    print("[OK] Grace Period: 12:00-12:15 PM")
+    print("[OK] Grace Period: 09:15-09:45 AM")
     print("[OK] Auto Status: Present/Late/Absent")
     print("[OK] Leave Management: ENABLED")
     print("[OK] WebSockets: ACTIVE")
@@ -66,7 +66,7 @@ def root():
         "mode": "Day-wise Attendance Only",
         "features": [
             "Day-wise attendance (one per day)",
-            "Grace period: 12:00-12:15 PM",
+            "Grace period: 09:15-09:45 AM",
             "Auto status detection",
             "Leave management",
             "Bulk marking for divisions",

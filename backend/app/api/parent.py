@@ -1,6 +1,7 @@
 """
 Parent API endpoints for viewing linked student's day-wise attendance.
 Parents can view attendance data but cannot modify it.
+Supports multiple children - parent can switch between children.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
 from app.core.database import get_db
-from app.models import Parent, Student, DailyAttendance
+from app.models import Parent, Student, DailyAttendance, ParentStudent
 
 
 router = APIRouter(prefix="/api/parent", tags=["Parent"])
@@ -35,9 +36,74 @@ def _get_student_attendance_stats(db: Session, student_id: int):
     }
 
 
+def _verify_parent_child_access(db: Session, parent_id: int, student_id: int):
+    """Verify that this parent has access to this student's data."""
+    # Check association table first
+    link = db.query(ParentStudent).filter(
+        ParentStudent.parent_id == parent_id,
+        ParentStudent.student_id == student_id
+    ).first()
+    if link:
+        return True
+    
+    # Fallback to legacy student_id
+    parent = db.query(Parent).filter(Parent.id == parent_id, Parent.student_id == student_id).first()
+    return parent is not None
+
+
+@router.get("/children/{parent_id}")
+def get_all_children(parent_id: int, db: Session = Depends(get_db)):
+    """Get all children linked to this parent account."""
+    parent = db.query(Parent).filter(Parent.id == parent_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    
+    # Get children from association table
+    links = db.query(ParentStudent).filter(ParentStudent.parent_id == parent_id).all()
+    children = []
+    
+    for link in links:
+        student = db.query(Student).filter(Student.id == link.student_id).first()
+        if student:
+            division_name = student.division.name if student.division else "N/A"
+            class_name = ""
+            dept_name = ""
+            if student.division and student.division.class_:
+                class_name = student.division.class_.name
+                if student.division.class_.department:
+                    dept_name = student.division.class_.department.name
+            children.append({
+                "student_id": student.id,
+                "name": f"{student.first_name} {student.last_name}",
+                "roll_number": student.roll_number,
+                "division": division_name,
+                "class_name": class_name,
+                "department": dept_name,
+                "email": student.email,
+                "phone": student.phone
+            })
+    
+    # Fallback: if no association records, use legacy student_id
+    if not children and parent.student_id:
+        student = db.query(Student).filter(Student.id == parent.student_id).first()
+        if student:
+            children.append({
+                "student_id": student.id,
+                "name": f"{student.first_name} {student.last_name}",
+                "roll_number": student.roll_number,
+                "division": student.division.name if student.division else "N/A",
+                "class_name": "",
+                "department": "",
+                "email": student.email,
+                "phone": student.phone
+            })
+    
+    return children
+
+
 @router.get("/child-info/{parent_id}")
-def get_child_info(parent_id: int, db: Session = Depends(get_db)):
-    """Get information about linked student."""
+def get_child_info(parent_id: int, student_id: int = None, db: Session = Depends(get_db)):
+    """Get information about linked student. Optionally specify student_id to get a specific child."""
     parent = db.query(Parent).filter(Parent.id == parent_id).first()
     
     if not parent:
@@ -46,7 +112,16 @@ def get_child_info(parent_id: int, db: Session = Depends(get_db)):
             detail="Parent not found"
         )
     
-    student = parent.student
+    # If student_id specified, verify access and use it
+    if student_id:
+        if not _verify_parent_child_access(db, parent_id, student_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this student's data")
+        student = db.query(Student).filter(Student.id == student_id).first()
+    else:
+        student = parent.student
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
     
     return {
         "student_id": student.id,
@@ -81,16 +156,25 @@ def get_child_attendance(student_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/child-daily-log/{parent_id}")
-def get_child_daily_log(parent_id: int, limit: int = 30, db: Session = Depends(get_db)):
+def get_child_daily_log(parent_id: int, student_id: int = None, limit: int = 30, db: Session = Depends(get_db)):
     """
-    Get daily attendance log limit for linked student.
+    Get daily attendance log for linked student.
+    Optionally specify student_id to get a specific child's log.
     """
     parent = db.query(Parent).filter(Parent.id == parent_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
     
+    # Use specified student_id or fallback to primary child
+    target_student_id = student_id
+    if target_student_id:
+        if not _verify_parent_child_access(db, parent_id, target_student_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this student's data")
+    else:
+        target_student_id = parent.student_id
+    
     records = db.query(DailyAttendance).filter(
-        DailyAttendance.student_id == parent.student_id
+        DailyAttendance.student_id == target_student_id
     ).order_by(DailyAttendance.date.desc()).limit(limit).all()
     
     result = []
@@ -105,14 +189,21 @@ def get_child_daily_log(parent_id: int, limit: int = 30, db: Session = Depends(g
 
 
 @router.get("/child-late-records/{parent_id}")
-def get_child_late_records(parent_id: int, db: Session = Depends(get_db)):
-    """Get all late day-wise attendance records for linked student."""
+def get_child_late_records(parent_id: int, student_id: int = None, db: Session = Depends(get_db)):
+    """Get all late day-wise attendance records. Optionally specify student_id."""
     parent = db.query(Parent).filter(Parent.id == parent_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
+    
+    target_student_id = student_id
+    if target_student_id:
+        if not _verify_parent_child_access(db, parent_id, target_student_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this student's data")
+    else:
+        target_student_id = parent.student_id
         
     late_records = db.query(DailyAttendance).filter(
-        DailyAttendance.student_id == parent.student_id,
+        DailyAttendance.student_id == target_student_id,
         DailyAttendance.status == "late"
     ).order_by(DailyAttendance.date.desc()).all()
     
@@ -131,14 +222,21 @@ def get_child_late_records(parent_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/child-absent-records/{parent_id}")
-def get_child_absent_records(parent_id: int, db: Session = Depends(get_db)):
-    """Get all absent records for linked student."""
+def get_child_absent_records(parent_id: int, student_id: int = None, db: Session = Depends(get_db)):
+    """Get all absent records for linked student. Optionally specify student_id."""
     parent = db.query(Parent).filter(Parent.id == parent_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
+    
+    target_student_id = student_id
+    if target_student_id:
+        if not _verify_parent_child_access(db, parent_id, target_student_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this student's data")
+    else:
+        target_student_id = parent.student_id
         
     absent_records = db.query(DailyAttendance).filter(
-        DailyAttendance.student_id == parent.student_id,
+        DailyAttendance.student_id == target_student_id,
         DailyAttendance.status == "absent"
     ).order_by(DailyAttendance.date.desc()).all()
     
@@ -156,23 +254,35 @@ def get_child_absent_records(parent_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{parent_id}/dashboard")
-def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
+def get_parent_dashboard(parent_id: int, student_id: int = None, db: Session = Depends(get_db)):
     """
     Get parent dashboard with child's day-wise attendance overview.
+    Optionally specify student_id to view a specific child's dashboard.
     """
     parent = db.query(Parent).filter(Parent.id == parent_id).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
     
-    student = parent.student
-    student_id = student.id
+    # Determine which student to show
+    target_student_id = student_id
+    if target_student_id:
+        if not _verify_parent_child_access(db, parent_id, target_student_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this student's data")
+        student = db.query(Student).filter(Student.id == target_student_id).first()
+    else:
+        student = parent.student
+    
+    if not student:
+        raise HTTPException(status_code=404, detail="No student linked to this parent")
+    
+    target_student_id = student.id
     
     # Overall stats
-    overall_stats = _get_student_attendance_stats(db, student_id)
+    overall_stats = _get_student_attendance_stats(db, target_student_id)
     
     # Recent attendance (last 7 days)
     recent_records = db.query(DailyAttendance).filter(
-        DailyAttendance.student_id == student_id
+        DailyAttendance.student_id == target_student_id
     ).order_by(DailyAttendance.date.desc()).limit(7).all()
     
     late_count = sum(1 for r in recent_records if r.status == "late")
@@ -180,6 +290,7 @@ def get_parent_dashboard(parent_id: int, db: Session = Depends(get_db)):
     
     return {
         "child_info": {
+            "student_id": student.id,
             "name": f"{student.first_name} {student.last_name}",
             "roll_number": student.roll_number,
             "division": student.division.name if student.division else "Unassigned"

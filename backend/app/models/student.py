@@ -1,4 +1,4 @@
-﻿"""
+"""
 Student Model - Represents students enrolled in the system.
 Linked to User table with face recognition authentication.
 """
@@ -35,7 +35,8 @@ class Student(Base):
     user = relationship("User", back_populates="student")
     division = relationship("Division", back_populates="students")
     batch = relationship("Batch", back_populates="students")
-    parents = relationship("Parent", back_populates="student")
+    parents = relationship("Parent", back_populates="student", foreign_keys="[Parent.student_id]")
+    parent_students = relationship("ParentStudent", back_populates="student", cascade="all, delete-orphan")
     
     # Day-wise attendance only
     daily_attendance = relationship("DailyAttendance", back_populates="student", cascade="all, delete-orphan")

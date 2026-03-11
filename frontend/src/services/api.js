@@ -285,26 +285,47 @@ export const studentAPI = {
 // ===========================
 
 export const parentAPI = {
-  // Get parent dashboard data
-  getDashboard: async (parentId) => {
-    const response = await api.get(`/api/parent/${parentId}/dashboard`)
+  // Get parent dashboard data (optionally for a specific child)
+  getDashboard: async (parentId, studentId = null) => {
+    const params = studentId ? { student_id: studentId } : {}
+    const response = await api.get(`/api/parent/${parentId}/dashboard`, { params })
     return response.data
   },
 
-  // Get child's attendance via parent ID 
-  getChildAttendance: async (parentId) => {
-    // Requires an ad-hoc endpoint to fetch this, assuming /api/parent/child-daily-log/{parent_id}
-    const response = await api.get(`/api/parent/child-daily-log/${parentId}`)
+  // Get all children linked to this parent
+  getChildren: async (parentId) => {
+    const response = await api.get(`/api/parent/children/${parentId}`)
+    return response.data
+  },
+
+  // Get child's daily attendance log (optionally for a specific child)
+  getChildAttendance: async (parentId, studentId = null) => {
+    const params = studentId ? { student_id: studentId } : {}
+    const response = await api.get(`/api/parent/child-daily-log/${parentId}`, { params })
     return response.data
   },
   
-  getChildLateRecords: async (parentId) => {
-    const response = await api.get(`/api/parent/child-late-records/${parentId}`)
+  getChildLateRecords: async (parentId, studentId = null) => {
+    const params = studentId ? { student_id: studentId } : {}
+    const response = await api.get(`/api/parent/child-late-records/${parentId}`, { params })
     return response.data
   },
   
-  getChildAbsentRecords: async (parentId) => {
-    const response = await api.get(`/api/parent/child-absent-records/${parentId}`)
+  getChildAbsentRecords: async (parentId, studentId = null) => {
+    const params = studentId ? { student_id: studentId } : {}
+    const response = await api.get(`/api/parent/child-absent-records/${parentId}`, { params })
+    return response.data
+  },
+
+  // Add a child to an existing parent
+  addChildToParent: async (parentId, studentId) => {
+    const response = await api.post(`/api/admin/parents/${parentId}/add-child?student_id=${studentId}`)
+    return response.data
+  },
+
+  // Remove a child from a parent
+  removeChildFromParent: async (parentId, studentId) => {
+    const response = await api.delete(`/api/admin/parents/${parentId}/remove-child/${studentId}`)
     return response.data
   }
 }

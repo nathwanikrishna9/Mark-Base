@@ -32,6 +32,7 @@ class LoginResponse(BaseModel):
     student_id: Optional[int] = None
     parent_id: Optional[int] = None
     linked_student_id: Optional[int] = None
+    children: Optional[list] = None
 
 
 class FaceLoginResponse(BaseModel):

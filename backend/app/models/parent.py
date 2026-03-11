@@ -1,6 +1,7 @@
 """
 Parent Model - Represents parent/guardian accounts.
-Linked to student for viewing attendance.
+Linked to one or more students for viewing attendance.
+Supports multiple children across different departments/divisions/years.
 """
 
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum
@@ -20,14 +21,15 @@ class RelationType(str, enum.Enum):
 class Parent(Base):
     """
     Parent model for viewing student attendance.
-    Created by Admin and linked to specific student.
+    Created by Admin and linked to one or more students.
     Authentication: Username + Password
     """
     __tablename__ = "parents"
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    # Keep student_id for backward compatibility (primary/first child)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=True)
     first_name = Column(String(50), nullable=False)
     last_name = Column(String(50), nullable=False)
     email = Column(String(100), nullable=True)
@@ -37,7 +39,9 @@ class Parent(Base):
     
     # Relationships
     user = relationship("User", back_populates="parent")
-    student = relationship("Student", back_populates="parents")
+    student = relationship("Student", back_populates="parents", foreign_keys=[student_id])
+    # Multi-child support via association table
+    parent_students = relationship("ParentStudent", back_populates="parent", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<Parent(id={self.id}, name='{self.first_name} {self.last_name}', student_id={self.student_id})>"
+        return f"<Parent(id={self.id}, name='{self.first_name} {self.last_name}')>"

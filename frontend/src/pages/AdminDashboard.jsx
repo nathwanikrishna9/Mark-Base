@@ -35,6 +35,7 @@ function AdminDashboard({ user, onLogout }) {
   const [divisionForm, setDivisionForm] = useState({ name: "", department_id: "", class_id: "" });
   const [studentForm, setStudentForm] = useState({
     username: "",
+    password: "",
     roll_number: "",
     enrollment_number: "",
     first_name: "",
@@ -114,6 +115,38 @@ function AdminDashboard({ user, onLogout }) {
     username: "",
     password: ""
   });
+  const [selectedChildren, setSelectedChildren] = useState([]);
+
+  // Helper to add a child to the selected list
+  const handleAddChild = () => {
+    if (!parentForm.student_id) return;
+    const studentId = parseInt(parentForm.student_id);
+    // Check if already added
+    if (selectedChildren.some(c => c.id === studentId)) {
+      showMessage("error", "This child is already added");
+      return;
+    }
+    const student = students.find(s => s.id === studentId);
+    if (!student) return;
+    const div = divisions.find(d => d.id === student.division_id);
+    const cls = div ? classes.find(c => c.id === div.class_id) : null;
+    const dept = cls ? departments.find(d => d.id === cls.department_id) : null;
+    setSelectedChildren(prev => [...prev, {
+      id: student.id,
+      name: `${student.first_name} ${student.last_name}`,
+      roll_number: student.roll_number,
+      division: div?.name || 'N/A',
+      class_name: cls?.name || '',
+      department: dept?.name || ''
+    }]);
+    // Reset student selection (keep dept/class/div for adding more from same div)
+    setParentForm(prev => ({ ...prev, student_id: "" }));
+  };
+
+  // Helper to remove a child from the selected list
+  const handleRemoveChild = (studentId) => {
+    setSelectedChildren(prev => prev.filter(c => c.id !== studentId));
+  };
   const [analyticsData, setAnalyticsData] = useState([]);
   const [analyticsDays, setAnalyticsDays] = useState(30);
 
@@ -318,14 +351,22 @@ function AdminDashboard({ user, onLogout }) {
   const handleUpdateStaff = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.updateStaff(editingStaff.id, {
+      const updateData = {
         staff_id: staffForm.staff_id,
         first_name: staffForm.first_name,
         last_name: staffForm.last_name,
         email: staffForm.email || null,
         phone: staffForm.phone || null,
         department_id: staffForm.department_id ? parseInt(staffForm.department_id) : null,
-      });
+      };
+      // Include credentials if provided
+      if (staffForm.username && staffForm.username.trim()) {
+        updateData.username = staffForm.username.trim();
+      }
+      if (staffForm.password && staffForm.password.trim()) {
+        updateData.password = staffForm.password.trim();
+      }
+      await adminAPI.updateStaff(editingStaff.id, updateData);
       showMessage("success", "Staff updated successfully!");
       setShowStaffForm(false);
       setEditingStaff(null);
@@ -349,6 +390,7 @@ function AdminDashboard({ user, onLogout }) {
     setEditingStudent(student);
     setStudentForm({
       username: "",
+      password: "",
       roll_number: student.roll_number,
       enrollment_number: student.enrollment_number || "",
       first_name: student.first_name,
@@ -380,12 +422,20 @@ function AdminDashboard({ user, onLogout }) {
       if (studentForm.division_id) {
         updateData.division_id = parseInt(studentForm.division_id);
       }
+      // Include credentials if provided
+      if (studentForm.username && studentForm.username.trim()) {
+        updateData.username = studentForm.username.trim();
+      }
+      if (studentForm.password && studentForm.password.trim()) {
+        updateData.password = studentForm.password.trim();
+      }
       await adminAPI.updateStudent(editingStudent.id, updateData);
       showMessage("success", "Student updated successfully!");
       setShowStudentForm(false);
       setEditingStudent(null);
       setStudentForm({
         username: "",
+        password: "",
         roll_number: "",
         enrollment_number: "",
         first_name: "",
@@ -423,13 +473,21 @@ function AdminDashboard({ user, onLogout }) {
   const handleUpdateParent = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.updateParent(editingParent.id, {
+      const updateData = {
         first_name: parentForm.first_name,
         last_name: parentForm.last_name,
         email: parentForm.email || null,
         phone: parentForm.phone || null,
         relation: parentForm.relation,
-      });
+      };
+      // Include credentials if provided
+      if (parentForm.username && parentForm.username.trim()) {
+        updateData.username = parentForm.username.trim();
+      }
+      if (parentForm.password && parentForm.password.trim()) {
+        updateData.password = parentForm.password.trim();
+      }
+      await adminAPI.updateParent(editingParent.id, updateData);
       showMessage("success", "Parent updated successfully!");
       setShowParentForm(false);
       setEditingParent(null);
@@ -629,14 +687,20 @@ function AdminDashboard({ user, onLogout }) {
           </button>
           <button
             className={`tab ${activeTab === "structure" ? "active" : ""}`}
-            onClick={() => setActiveTab("structure")}
+            onClick={() => {
+              setActiveTab("structure");
+              setActiveSubTab("departments");
+            }}
           >
             Academic Structure
 
           </button>
           <button
             className={`tab ${activeTab === "users" ? "active" : ""}`}
-            onClick={() => setActiveTab("users")}
+            onClick={() => {
+              setActiveTab("users");
+              setActiveSubTab("students");
+            }}
           >
             Users
           </button>
@@ -1176,10 +1240,10 @@ function AdminDashboard({ user, onLogout }) {
                         />
                       </div>
                       <div className="form-group">
-                        <label>Username *</label>
+                        <label>{editingStudent ? 'New Username (leave blank to keep)' : 'Username *'}</label>
                         <input
                           type="text"
-                          required
+                          required={!editingStudent}
                           value={studentForm.username}
                           onChange={(e) =>
                             setStudentForm({
@@ -1187,7 +1251,22 @@ function AdminDashboard({ user, onLogout }) {
                               username: e.target.value,
                             })
                           }
-                          placeholder="john.doe"
+                          placeholder={editingStudent ? 'Leave blank to keep current' : 'john.doe'}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>{editingStudent ? 'New Password (leave blank to keep)' : 'Password *'}</label>
+                        <input
+                          type="password"
+                          required={!editingStudent}
+                          value={studentForm.password}
+                          onChange={(e) =>
+                            setStudentForm({
+                              ...studentForm,
+                              password: e.target.value,
+                            })
+                          }
+                          placeholder={editingStudent ? 'Leave blank to keep current' : 'Enter password'}
                         />
                       </div>
                     </div>
@@ -1650,10 +1729,10 @@ function AdminDashboard({ user, onLogout }) {
                     </div>
                     <div className="form-row">
                       <div className="form-group">
-                        <label>Username *</label>
+                        <label>{editingStaff ? 'New Username (leave blank to keep)' : 'Username *'}</label>
                         <input
                           type="text"
-                          required
+                          required={!editingStaff}
                           value={staffForm.username}
                           onChange={(e) =>
                             setStaffForm({
@@ -1661,13 +1740,14 @@ function AdminDashboard({ user, onLogout }) {
                               username: e.target.value,
                             })
                           }
+                          placeholder={editingStaff ? 'Leave blank to keep current' : 'staff.username'}
                         />
                       </div>
                       <div className="form-group">
-                        <label>Password *</label>
+                        <label>{editingStaff ? 'New Password (leave blank to keep)' : 'Password *'}</label>
                         <input
                           type="password"
-                          required
+                          required={!editingStaff}
                           value={staffForm.password}
                           onChange={(e) =>
                             setStaffForm({
@@ -1675,6 +1755,7 @@ function AdminDashboard({ user, onLogout }) {
                               password: e.target.value,
                             })
                           }
+                          placeholder={editingStaff ? 'Leave blank to keep current' : 'Enter password'}
                         />
                       </div>
                     </div>
@@ -1790,9 +1871,24 @@ function AdminDashboard({ user, onLogout }) {
                     onSubmit={editingParent ? handleUpdateParent : async (e) => {
                       e.preventDefault();
                       try {
-                        await adminAPI.createParent(parentForm);
-                        showMessage("success", "Parent account created!");
+                        const payload = {
+                          username: parentForm.username,
+                          password: parentForm.password,
+                          first_name: parentForm.first_name,
+                          last_name: parentForm.last_name,
+                          email: parentForm.email || null,
+                          phone: parentForm.phone,
+                          relation: parentForm.relation,
+                          student_ids: selectedChildren.map(c => c.id)
+                        };
+                        if (payload.student_ids.length === 0) {
+                          showMessage("error", "Please add at least one child");
+                          return;
+                        }
+                        await adminAPI.createParent(payload);
+                        showMessage("success", `Parent account created with ${payload.student_ids.length} child(ren)!`);
                         setShowParentForm(false);
+                        setSelectedChildren([]);
                         setParentForm({
                           department_id: "",
                           class_id: "",
@@ -1818,14 +1914,14 @@ function AdminDashboard({ user, onLogout }) {
                     className="form-box"
                   >
                     <div className="alert alert-info">
-                      Parent accounts are linked to a specific student.
-                      Parents can view their child's attendance.
+                      Parent accounts can be linked to <strong>multiple children</strong> (students).
+                      Add one or more children below. The parent will be able to switch between children on their dashboard.
                     </div>
                     <div className="form-row">
                       <div className="form-group">
-                        <label>Department *</label>
+                        <label>{(!editingParent && selectedChildren.length === 0) ? "Department *" : "Department (Optional)"}</label>
                         <select
-                          required
+                          required={!editingParent && selectedChildren.length === 0}
                           value={parentForm.department_id}
                           onChange={(e) =>
                             setParentForm({
@@ -1848,9 +1944,9 @@ function AdminDashboard({ user, onLogout }) {
                         {departments.length === 0 && <small className="text-muted text-warning">Loading departments...</small>}
                       </div>
                       <div className="form-group">
-                        <label>Class *</label>
+                        <label>{(!editingParent && selectedChildren.length === 0) ? "Class *" : "Class (Optional)"}</label>
                         <select
-                          required
+                          required={!editingParent && selectedChildren.length === 0}
                           value={parentForm.class_id}
                           disabled={!parentForm.department_id || classes.length === 0}
                           onChange={(e) =>
@@ -1877,9 +1973,9 @@ function AdminDashboard({ user, onLogout }) {
                         {parentForm.department_id && classes.length === 0 && <small className="text-muted text-warning">Loading classes...</small>}
                       </div>
                       <div className="form-group">
-                        <label>Division *</label>
+                        <label>{(!editingParent && selectedChildren.length === 0) ? "Division *" : "Division (Optional)"}</label>
                         <select
-                          required
+                          required={!editingParent && selectedChildren.length === 0}
                           value={parentForm.division_id}
                           disabled={!parentForm.class_id || divisions.length === 0}
                           onChange={(e) =>
@@ -1907,9 +2003,8 @@ function AdminDashboard({ user, onLogout }) {
                     </div>
                     <div className="form-row">
                       <div className="form-group">
-                        <label>Select Student (Child) *</label>
+                        <label>Select Student (Child)</label>
                         <select
-                          required
                           value={parentForm.student_id}
                           disabled={!parentForm.division_id || students.length === 0}
                           onChange={(e) =>
@@ -1922,6 +2017,7 @@ function AdminDashboard({ user, onLogout }) {
                           <option value="">Select Student</option>
                           {students
                             .filter((s) => s.division_id === parseInt(parentForm.division_id))
+                            .filter((s) => !selectedChildren.some(c => c.id === s.id))
                             .map((student) => (
                               <option key={student.id} value={student.id}>
                                 {student.roll_number} - {student.first_name}{" "}
@@ -1930,8 +2026,19 @@ function AdminDashboard({ user, onLogout }) {
                             ))}
                         </select>
                         <small className="text-muted">
-                          {!parentForm.division_id ? "Select a division first to load students" : "This is the student (ward) for this parent account"}
+                          {!parentForm.division_id ? "Select a division first to load students" : "Select a student and click 'Add Child' button"}
                         </small>
+                      </div>
+                      <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={handleAddChild}
+                          disabled={!parentForm.student_id}
+                          style={{ whiteSpace: 'nowrap' }}
+                        >
+                          + Add Child
+                        </button>
                       </div>
                       <div className="form-group">
                         <label>Relation *</label>
@@ -1951,6 +2058,68 @@ function AdminDashboard({ user, onLogout }) {
                         </select>
                       </div>
                     </div>
+                    {/* Selected Children Display */}
+                    {!editingParent && selectedChildren.length > 0 && (
+                      <div style={{
+                        margin: '12px 0',
+                        padding: '12px 16px',
+                        background: 'linear-gradient(135deg, #f0f4ff 0%, #e8ecff 100%)',
+                        borderRadius: '8px',
+                        border: '1px solid #d5ddff'
+                      }}>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#555', marginBottom: '8px' }}>
+                          Children Added ({selectedChildren.length}):
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {selectedChildren.map((child) => (
+                            <div
+                              key={child.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '6px 12px',
+                                background: '#fff',
+                                borderRadius: '20px',
+                                border: '1px solid #ccc',
+                                fontSize: '13px'
+                              }}
+                            >
+                              <span style={{ fontWeight: '600' }}>{child.name}</span>
+                              <span style={{ color: '#888', fontSize: '11px' }}>
+                                {child.roll_number}
+                                {child.department && ` • ${child.department}`}
+                                {child.class_name && ` / ${child.class_name}`}
+                                {child.division && ` — Div ${child.division}`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveChild(child.id)}
+                                style={{
+                                  background: '#ff4444',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '50%',
+                                  width: '20px',
+                                  height: '20px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  lineHeight: 1
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <small style={{ color: '#888', display: 'block', marginTop: '6px' }}>
+                          💡 To add children from different departments, change the Department/Class/Division selectors above and add more.
+                        </small>
+                      </div>
+                    )}
                     <div className="form-row">
                       <div className="form-group">
                         <label>First Name *</label>
@@ -2012,10 +2181,10 @@ function AdminDashboard({ user, onLogout }) {
                     </div>
                     <div className="form-row">
                       <div className="form-group">
-                        <label>Username *</label>
+                        <label>{editingParent ? 'New Username (leave blank to keep)' : 'Username *'}</label>
                         <input
                           type="text"
-                          required
+                          required={!editingParent}
                           value={parentForm.username}
                           onChange={(e) =>
                             setParentForm({
@@ -2023,14 +2192,14 @@ function AdminDashboard({ user, onLogout }) {
                               username: e.target.value,
                             })
                           }
-                          placeholder="parent.name"
+                          placeholder={editingParent ? 'Leave blank to keep current' : 'parent.name'}
                         />
                       </div>
                       <div className="form-group">
-                        <label>Password *</label>
+                        <label>{editingParent ? 'New Password (leave blank to keep)' : 'Password *'}</label>
                         <input
                           type="password"
-                          required
+                          required={!editingParent}
                           value={parentForm.password}
                           onChange={(e) =>
                             setParentForm({
@@ -2038,6 +2207,7 @@ function AdminDashboard({ user, onLogout }) {
                               password: e.target.value,
                             })
                           }
+                          placeholder={editingParent ? 'Leave blank to keep current' : 'Enter password'}
                         />
                       </div>
                     </div>
@@ -2051,7 +2221,11 @@ function AdminDashboard({ user, onLogout }) {
                         onClick={() => {
                           setShowParentForm(false);
                           setEditingParent(null);
+                          setSelectedChildren([]);
                           setParentForm({
+                            department_id: "",
+                            class_id: "",
+                            division_id: "",
                             student_id: "",
                             first_name: "",
                             last_name: "",
@@ -2074,7 +2248,7 @@ function AdminDashboard({ user, onLogout }) {
                       <th>Parent Name</th>
                       <th>Relation</th>
                       <th>Phone</th>
-                      <th>Student (Ward)</th>
+                      <th>Children (Wards)</th>
                       {hasParentUsername && <th>Username</th>}
                       <th>Actions</th>
                     </tr>
@@ -2091,9 +2265,6 @@ function AdminDashboard({ user, onLogout }) {
                       </tr>
                     ) : (
                       parents.map((parent) => {
-                        const student = students.find(
-                          (item) => item.id === parent.student_id,
-                        );
                         return (
                           <tr key={parent.id}>
                             <td>
@@ -2102,9 +2273,18 @@ function AdminDashboard({ user, onLogout }) {
                             <td>{parent.relation}</td>
                             <td>{parent.phone}</td>
                             <td>
-                              {student
-                                ? `${student.roll_number} - ${student.first_name} ${student.last_name}`
-                                : `Student ID ${parent.student_id}`}
+                              {parent.children && parent.children.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  {parent.children.map((child, idx) => (
+                                    <span key={child.student_id} style={{ fontSize: '13px' }}>
+                                      {child.roll_number} — {child.name}
+                                      {child.division && <span style={{ color: '#888', fontSize: '11px' }}> (Div {child.division})</span>}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-muted">No children linked</span>
+                              )}
                             </td>
                             {hasParentUsername && (
                               <td>{parent.username || "-"}</td>

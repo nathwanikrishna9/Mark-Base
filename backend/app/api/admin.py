@@ -11,7 +11,7 @@ from datetime import date
 from app.core.database import get_db
 from app.models import (
     User, Department, Class, Division, Batch, Subject,
-    Staff, Student, Parent, DailyAttendance
+    Staff, Student, Parent, ParentStudent, DailyAttendance
 )
 from app.utils.security import get_password_hash
 import asyncio
@@ -66,6 +66,8 @@ class UpdateStaffRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     department_id: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 class CreateStudentRequest(BaseModel):
@@ -96,12 +98,15 @@ class UpdateStudentRequest(BaseModel):
     division_id: Optional[int] = None
     date_of_birth: Optional[date] = None
     enrollment_year: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 class CreateParentRequest(BaseModel):
     username: str
     password: str
-    student_id: int
+    student_ids: List[int] = []  # List of children student IDs
+    student_id: Optional[int] = None  # Legacy single child (backward compat)
     first_name: str
     last_name: str
     email: Optional[str] = None
@@ -115,6 +120,8 @@ class UpdateParentRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     relation: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
 
 
 class UpdateAttendanceRequest(BaseModel):
@@ -368,12 +375,12 @@ def create_staff(request: CreateStaffRequest, db: Session = Depends(get_db)):
 
 @router.put("/staff/{staff_id}")
 def update_staff(staff_id: int, request: UpdateStaffRequest, db: Session = Depends(get_db)):
-    """Update a staff member's details."""
+    """Update a staff member's details including login credentials."""
     staff = db.query(Staff).filter(Staff.id == staff_id).first()
     if not staff:
         raise HTTPException(status_code=404, detail="Staff not found")
     
-    # Update only provided fields
+    # Update staff profile fields
     if request.staff_id is not None:
         staff.staff_id = request.staff_id
     if request.first_name is not None:
@@ -390,6 +397,21 @@ def update_staff(staff_id: int, request: UpdateStaffRequest, db: Session = Depen
         if not department:
             raise HTTPException(status_code=404, detail="Department not found")
         staff.department_id = request.department_id
+    
+    # Update User credentials (username / password)
+    user = db.query(User).filter(User.id == staff.user_id).first()
+    if user:
+        if request.username is not None and request.username.strip():
+            # Check if new username is already taken by another user
+            existing = db.query(User).filter(
+                User.username == request.username.strip(),
+                User.id != user.id
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Username already taken by another user")
+            user.username = request.username.strip()
+        if request.password is not None and request.password.strip():
+            user.password_hash = get_password_hash(request.password.strip())
     
     db.commit()
     db.refresh(staff)
@@ -552,29 +574,107 @@ def update_student(student_id: int, request: UpdateStudentRequest, db: Session =
     if request.enrollment_year is not None:
         student.enrollment_year = request.enrollment_year
     
+    # Update User credentials (username / password)
+    user = db.query(User).filter(User.id == student.user_id).first()
+    if user:
+        if request.username is not None and request.username.strip():
+            existing = db.query(User).filter(
+                User.username == request.username.strip(),
+                User.id != user.id
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Username already taken by another user")
+            user.username = request.username.strip()
+        if request.password is not None and request.password.strip():
+            user.password_hash = get_password_hash(request.password.strip())
+    
     db.commit()
     db.refresh(student)
     return student
 @router.get("/parents")
 def get_parents(student_id: Optional[int] = None, db: Session = Depends(get_db)):
-    """Get all parents, optionally filtered by student."""
+    """Get all parents, optionally filtered by student. Includes linked children info."""
     query = db.query(Parent)
     if student_id:
-        query = query.filter(Parent.student_id == student_id)
+        # Check both legacy student_id and association table
+        parent_ids_from_assoc = db.query(ParentStudent.parent_id).filter(
+            ParentStudent.student_id == student_id
+        ).all()
+        parent_ids = [p[0] for p in parent_ids_from_assoc]
+        query = query.filter(
+            (Parent.student_id == student_id) | (Parent.id.in_(parent_ids))
+        )
     parents = query.all()
-    return parents
+    
+    # Enrich with children info
+    result = []
+    for parent in parents:
+        parent_dict = {
+            "id": parent.id,
+            "user_id": parent.user_id,
+            "student_id": parent.student_id,
+            "first_name": parent.first_name,
+            "last_name": parent.last_name,
+            "email": parent.email,
+            "phone": parent.phone,
+            "relation": parent.relation,
+            "username": parent.user.username if parent.user else None,
+            "created_at": str(parent.created_at) if parent.created_at else None
+        }
+        
+        # Get all linked children
+        links = db.query(ParentStudent).filter(ParentStudent.parent_id == parent.id).all()
+        children = []
+        for link in links:
+            student = db.query(Student).filter(Student.id == link.student_id).first()
+            if student:
+                div_name = student.division.name if student.division else "N/A"
+                children.append({
+                    "student_id": student.id,
+                    "name": f"{student.first_name} {student.last_name}",
+                    "roll_number": student.roll_number,
+                    "division": div_name
+                })
+        
+        # Fallback to legacy student_id
+        if not children and parent.student_id:
+            student = db.query(Student).filter(Student.id == parent.student_id).first()
+            if student:
+                children.append({
+                    "student_id": student.id,
+                    "name": f"{student.first_name} {student.last_name}",
+                    "roll_number": student.roll_number,
+                    "division": student.division.name if student.division else "N/A"
+                })
+        
+        parent_dict["children"] = children
+        result.append(parent_dict)
+    
+    return result
 
 
 @router.post("/parents")
 def create_parent(request: CreateParentRequest, db: Session = Depends(get_db)):
-    """Create a new parent account."""
-    # Validate student exists
-    student = db.query(Student).filter(Student.id == request.student_id).first()
-    if not student:
+    """Create a new parent account with one or more children."""
+    # Collect all student IDs (from both new list and legacy field)
+    all_student_ids = list(request.student_ids) if request.student_ids else []
+    if request.student_id and request.student_id not in all_student_ids:
+        all_student_ids.append(request.student_id)
+    
+    if not all_student_ids:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one student (child) must be specified"
         )
+    
+    # Validate all students exist
+    for sid in all_student_ids:
+        student = db.query(Student).filter(Student.id == sid).first()
+        if not student:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Student with ID {sid} not found"
+            )
     
     # Check if username already exists
     existing_user = db.query(User).filter(User.username == request.username).first()
@@ -593,10 +693,10 @@ def create_parent(request: CreateParentRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.flush()
     
-    # Create parent profile
+    # Create parent profile (set first child as legacy student_id)
     parent = Parent(
         user_id=user.id,
-        student_id=request.student_id,
+        student_id=all_student_ids[0],
         first_name=request.first_name,
         last_name=request.last_name,
         email=request.email,
@@ -604,10 +704,77 @@ def create_parent(request: CreateParentRequest, db: Session = Depends(get_db)):
         relation=request.relation
     )
     db.add(parent)
+    db.flush()
+    
+    # Create association records for ALL children
+    for sid in all_student_ids:
+        link = ParentStudent(
+            parent_id=parent.id,
+            student_id=sid
+        )
+        db.add(link)
+    
     db.commit()
     db.refresh(parent)
     
-    return parent
+    return {
+        "id": parent.id,
+        "user_id": parent.user_id,
+        "first_name": parent.first_name,
+        "last_name": parent.last_name,
+        "email": parent.email,
+        "phone": parent.phone,
+        "relation": parent.relation,
+        "children_count": len(all_student_ids),
+        "student_ids": all_student_ids
+    }
+
+
+@router.post("/parents/{parent_id}/add-child")
+def add_child_to_parent(parent_id: int, student_id: int, db: Session = Depends(get_db)):
+    """Add an additional child (student) to an existing parent account."""
+    parent = db.query(Parent).filter(Parent.id == parent_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    # Check if link already exists
+    existing = db.query(ParentStudent).filter(
+        ParentStudent.parent_id == parent_id,
+        ParentStudent.student_id == student_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="This child is already linked to this parent")
+    
+    link = ParentStudent(parent_id=parent_id, student_id=student_id)
+    db.add(link)
+    db.commit()
+    
+    return {"message": "Child added successfully", "parent_id": parent_id, "student_id": student_id}
+
+
+@router.delete("/parents/{parent_id}/remove-child/{student_id}")
+def remove_child_from_parent(parent_id: int, student_id: int, db: Session = Depends(get_db)):
+    """Remove a child (student) from a parent account."""
+    link = db.query(ParentStudent).filter(
+        ParentStudent.parent_id == parent_id,
+        ParentStudent.student_id == student_id
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="This child is not linked to this parent")
+    
+    # Ensure at least one child remains
+    total_links = db.query(ParentStudent).filter(ParentStudent.parent_id == parent_id).count()
+    if total_links <= 1:
+        raise HTTPException(status_code=400, detail="Cannot remove the last child. A parent must have at least one child linked.")
+    
+    db.delete(link)
+    db.commit()
+    
+    return {"message": "Child removed successfully"}
 
 
 @router.put("/parents/{parent_id}")
@@ -628,6 +795,20 @@ def update_parent(parent_id: int, request: UpdateParentRequest, db: Session = De
         parent.phone = request.phone
     if request.relation is not None:
         parent.relation = request.relation
+    
+    # Update User credentials (username / password)
+    user = db.query(User).filter(User.id == parent.user_id).first()
+    if user:
+        if request.username is not None and request.username.strip():
+            existing = db.query(User).filter(
+                User.username == request.username.strip(),
+                User.id != user.id
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Username already taken by another user")
+            user.username = request.username.strip()
+        if request.password is not None and request.password.strip():
+            user.password_hash = get_password_hash(request.password.strip())
     
     db.commit()
     db.refresh(parent)
