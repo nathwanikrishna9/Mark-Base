@@ -20,6 +20,7 @@ function ParentDashboard({ user, onLogout }) {
   const [dailyLog, setDailyLog] = useState([])
   const [lateRecords, setLateRecords] = useState(null)
   const [absentRecords, setAbsentRecords] = useState(null)
+  const [presentRecords, setPresentRecords] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [loading, setLoading] = useState(true)
 
@@ -63,17 +64,19 @@ function ParentDashboard({ user, onLogout }) {
     try {
       const pId = user.parent_id || user.id
 
-      const [dashData, logData, lateData, absentData] = await Promise.all([
+      const [dashData, logData, lateData, absentData, presentData] = await Promise.all([
         parentAPI.getDashboard(pId, studentId),
         parentAPI.getChildAttendance(pId, studentId),
         parentAPI.getChildLateRecords(pId, studentId),
-        parentAPI.getChildAbsentRecords(pId, studentId)
+        parentAPI.getChildAbsentRecords(pId, studentId),
+        parentAPI.getChildPresentRecords(pId, studentId)
       ])
       
       setDashboard(dashData)
       setDailyLog(logData)
       setLateRecords(lateData)
       setAbsentRecords(absentData)
+      setPresentRecords(presentData)
     } catch (err) {
       console.error('Failed to load data:', err)
     } finally {
@@ -326,16 +329,28 @@ function ParentDashboard({ user, onLogout }) {
           >
             Absences
           </button>
+          <button
+            className={`tab ${activeTab === 'present' ? 'active' : ''}`}
+            onClick={() => setActiveTab('present')}
+          >
+            Present Days
+          </button>
         </div>
 
         {/* Overview Tab */}
         {activeTab === 'overview' && dashboard && (
           <>
-            <div className="grid grid-3">
+            <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
               <div className="card stat-card">
                 <h3>Overall Attendance</h3>
                 <div className="stat-large">{dashboard.overall_statistics.percentage.toFixed(1)}%</div>
                 <p className="text-muted">{dashboard.overall_statistics.total} total days logged</p>
+              </div>
+              
+              <div className="card stat-card">
+                <h3>Recent Present</h3>
+                <div className="stat-large" style={{ color: '#4caf50' }}>{dashboard.recent_present_count || 0}</div>
+                <p className="text-muted">Last 7 days</p>
               </div>
               
               <div className="card stat-card">
@@ -491,6 +506,33 @@ function ParentDashboard({ user, onLogout }) {
                     </tr>
                     )) : (
                          <tr><td colSpan="2" style={{textAlign:"center", padding: "10px"}}>No absences recorded.</td></tr>
+                    )}
+                </tbody>
+                </table>
+            </div>
+          </div>
+        )}
+
+        {/* Present Tab */}
+        {activeTab === 'present' && presentRecords && (
+          <div className="card">
+            <div className="card-header">Present Days ({presentRecords.total_present})</div>
+            <div className="table-responsive">
+                <table className="table">
+                <thead>
+                    <tr>
+                    <th>Date</th>
+                    <th>Marked At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {presentRecords.present_records.length > 0 ? presentRecords.present_records.map((record, index) => (
+                    <tr key={index}>
+                        <td>{record.date}</td>
+                        <td>{record.marked_at}</td>
+                    </tr>
+                    )) : (
+                        <tr><td colSpan="2" style={{textAlign:"center", padding: "10px"}}>No present records found.</td></tr>
                     )}
                 </tbody>
                 </table>

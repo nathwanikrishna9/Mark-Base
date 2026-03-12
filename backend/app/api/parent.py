@@ -252,6 +252,38 @@ def get_child_absent_records(parent_id: int, student_id: int = None, db: Session
         "absent_records": result
     }
 
+@router.get("/child-present-records/{parent_id}")
+def get_child_present_records(parent_id: int, student_id: int = None, db: Session = Depends(get_db)):
+    """Get all present records for linked student. Optionally specify student_id."""
+    parent = db.query(Parent).filter(Parent.id == parent_id).first()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    
+    target_student_id = student_id
+    if target_student_id:
+        if not _verify_parent_child_access(db, parent_id, target_student_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this student's data")
+    else:
+        target_student_id = parent.student_id
+        
+    present_records = db.query(DailyAttendance).filter(
+        DailyAttendance.student_id == target_student_id,
+        DailyAttendance.status == "present"
+    ).order_by(DailyAttendance.date.desc()).all()
+    
+    result = []
+    for record in present_records:
+        result.append({
+            "date": str(record.date),
+            "marked_at": str(record.check_in_time) if record.check_in_time else "N/A",
+        })
+    
+    return {
+        "total_present": len(present_records),
+        "present_records": result
+    }
+
+
 
 @router.get("/{parent_id}/dashboard")
 def get_parent_dashboard(parent_id: int, student_id: int = None, db: Session = Depends(get_db)):
@@ -287,6 +319,7 @@ def get_parent_dashboard(parent_id: int, student_id: int = None, db: Session = D
     
     late_count = sum(1 for r in recent_records if r.status == "late")
     absent_count = sum(1 for r in recent_records if r.status == "absent")
+    present_count = sum(1 for r in recent_records if r.status == "present")
     
     return {
         "child_info": {
@@ -298,6 +331,7 @@ def get_parent_dashboard(parent_id: int, student_id: int = None, db: Session = D
         "overall_statistics": overall_stats,
         "recent_late_count": late_count,
         "recent_absent_count": absent_count,
+        "recent_present_count": present_count,
         "last_7_days_attendance": [
             {
                 "date": str(r.date),

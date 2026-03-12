@@ -317,6 +317,12 @@ export const parentAPI = {
     return response.data
   },
 
+  getChildPresentRecords: async (parentId, studentId = null) => {
+    const params = studentId ? { student_id: studentId } : {}
+    const response = await api.get(`/api/parent/child-present-records/${parentId}`, { params })
+    return response.data
+  },
+
   // Add a child to an existing parent
   addChildToParent: async (parentId, studentId) => {
     const response = await api.post(`/api/admin/parents/${parentId}/add-child?student_id=${studentId}`)
