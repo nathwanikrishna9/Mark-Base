@@ -1204,7 +1204,29 @@ function AdminDashboard({ user, onLogout }) {
                   <h3>Students Management</h3>
                   <button
                     className="btn btn-primary"
-                    onClick={() => setShowStudentForm(!showStudentForm)}
+                    onClick={() => {
+                      if (editingStudent || !showStudentForm) {
+                        setEditingStudent(null);
+                        setStudentForm({
+                          username: "",
+                          password: "",
+                          roll_number: "",
+                          enrollment_number: "",
+                          first_name: "",
+                          last_name: "",
+                          email: "",
+                          phone: "",
+                          department_id: "",
+                          class_id: "",
+                          division_id: "",
+                          date_of_birth: "",
+                          enrollment_year: new Date().getFullYear(),
+                        });
+                        setShowStudentForm(true);
+                      } else {
+                        setShowStudentForm(false);
+                      }
+                    }}
                   >
                     + Add Student
                   </button>
@@ -1243,7 +1265,7 @@ function AdminDashboard({ user, onLogout }) {
                         />
                       </div>
                       <div className="form-group">
-                        <label>{editingStudent ? 'New Username (leave blank to keep)' : 'Username *'}</label>
+                        <label>{editingStudent ? 'New Username' : 'Username *'}</label>
                         <input
                           type="text"
                           required={!editingStudent}
@@ -1254,11 +1276,11 @@ function AdminDashboard({ user, onLogout }) {
                               username: e.target.value,
                             })
                           }
-                          placeholder={editingStudent ? 'Leave blank to keep current' : 'john.doe'}
+                          placeholder={editingStudent ? 'Username' : 'john.doe'}
                         />
                       </div>
                       <div className="form-group">
-                        <label>{editingStudent ? 'New Password (leave blank to keep)' : 'Password *'}</label>
+                        <label>{editingStudent ? 'New Password' : 'Password *'}</label>
                         <input
                           type="password"
                           required={!editingStudent}
@@ -1269,7 +1291,7 @@ function AdminDashboard({ user, onLogout }) {
                               password: e.target.value,
                             })
                           }
-                          placeholder={editingStudent ? 'Leave blank to keep current' : 'Enter password'}
+                          placeholder={editingStudent ? 'Password' : 'Enter password'}
                         />
                       </div>
                     </div>
@@ -1323,6 +1345,7 @@ function AdminDashboard({ user, onLogout }) {
                         <input
                           type="date"
                           required
+                          max={new Date().toISOString().split('T')[0]}
                           value={studentForm.date_of_birth}
                           onChange={(e) =>
                             setStudentForm({
@@ -1610,7 +1633,26 @@ function AdminDashboard({ user, onLogout }) {
                   <h3>Staff Management</h3>
                   <button
                     className="btn btn-primary"
-                    onClick={() => setShowStaffForm(!showStaffForm)}
+                    onClick={() => {
+                      if (editingStaff || !showStaffForm) {
+                        setEditingStaff(null);
+                        setStaffForm({
+                          staff_id: "",
+                          first_name: "",
+                          last_name: "",
+                          email: "",
+                          phone: "",
+                          department_id: "",
+                          class_id: "",
+                          division_id: "",
+                          username: "",
+                          password: "",
+                        });
+                        setShowStaffForm(true);
+                      } else {
+                        setShowStaffForm(false);
+                      }
+                    }}
                   >
                     + Add Staff
                   </button>
@@ -1864,7 +1906,28 @@ function AdminDashboard({ user, onLogout }) {
                   <h3>Parents Management</h3>
                   <button
                     className="btn btn-primary"
-                    onClick={() => setShowParentForm(!showParentForm)}
+                    onClick={() => {
+                      if (editingParent || !showParentForm) {
+                        setEditingParent(null);
+                        setSelectedChildren([]);
+                        setParentForm({
+                          department_id: "",
+                          class_id: "",
+                          division_id: "",
+                          student_id: "",
+                          first_name: "",
+                          last_name: "",
+                          email: "",
+                          phone: "",
+                          relation: "father",
+                          username: "",
+                          password: ""
+                        });
+                        setShowParentForm(true);
+                      } else {
+                        setShowParentForm(false);
+                      }
+                    }}
                   >
                     + Add Parent
                   </button>
@@ -2619,4 +2682,3 @@ function AdminDashboard({ user, onLogout }) {
   );
 }
 export default AdminDashboard;
-
