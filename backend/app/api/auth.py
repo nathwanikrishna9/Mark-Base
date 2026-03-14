@@ -133,12 +133,32 @@ async def register_student_face(
     """
     image_data = await image.read()
     
-    success = AuthService.register_student_face(db, student_id, image_data)
+    success, message = AuthService.register_student_face(db, student_id, image_data)
     
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to register face. Ensure face is clearly visible."
+            detail=message
         )
     
     return {"message": "Face registered successfully", "student_id": student_id}
+
+@router.post("/check-face-unique")
+async def check_face_unique(
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Check if a face is already registered to another user without creating a user
+    """
+    image_data = await image.read()
+    
+    success, message = AuthService.check_face_uniqueness(db, image_data)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    
+    return {"message": "Face is unique"}

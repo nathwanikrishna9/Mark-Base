@@ -96,6 +96,36 @@ class FaceRecognitionService:
             print(f"[ERROR] Error encoding face: {str(e)}")
             return None
     
+    def verify_face_encoding(self, face_encoding_json: str, target_encoding: List[float]) -> Tuple[bool, float]:
+        """
+        Verify if target face encoding matches the stored encoding (AI Verification).
+        
+        Args:
+            face_encoding_json: Stored face encoding as JSON string
+            target_encoding: 128-dimensional face encoding vector
+        
+        Returns:
+            Tuple[bool, float]: (is_match, confidence_distance)
+        """
+        try:
+            # Load stored encoding
+            stored_encoding = np.array(json.loads(face_encoding_json))
+            target_encoding_np = np.array(target_encoding)
+            
+            # Compare faces (AI - Face Matching)
+            face_distance = face_recognition.face_distance([stored_encoding], target_encoding_np)[0]
+            
+            # Check if distance is within tolerance
+            is_match = float(face_distance) <= self.tolerance
+            
+            print(f"Face verification: Match={is_match}, Distance={face_distance:.3f}, Tolerance={self.tolerance}")
+            
+            return is_match, float(face_distance)
+        
+        except Exception as e:
+            print(f"[ERROR] Error verifying face encoding: {str(e)}")
+            return False, 1.0
+
     def verify_face(self, face_encoding_json: str, image_data: bytes) -> Tuple[bool, float]:
         """
         Verify if the face in the image matches the stored encoding (AI Verification).
@@ -110,27 +140,13 @@ class FaceRecognitionService:
                 - confidence_distance: Lower is better (0.0 = perfect match)
         """
         try:
-            # Load stored encoding
-            stored_encoding = np.array(json.loads(face_encoding_json))
-            
             # Generate encoding from provided image
             new_encoding = self.encode_face_from_image(image_data)
             
             if new_encoding is None:
                 return False, 1.0
             
-            new_encoding_np = np.array(new_encoding)
-            
-            # Compare faces (AI - Face Matching)
-            # Returns array of distances (lower = more similar)
-            face_distance = face_recognition.face_distance([stored_encoding], new_encoding_np)[0]
-            
-            # Check if distance is within tolerance
-            is_match = face_distance <= self.tolerance
-            
-            print(f"Face verification: Match={is_match}, Distance={face_distance:.3f}, Tolerance={self.tolerance}")
-            
-            return is_match, float(face_distance)
+            return self.verify_face_encoding(face_encoding_json, new_encoding)
         
         except Exception as e:
             print(f"[ERROR] Error verifying face: {str(e)}")

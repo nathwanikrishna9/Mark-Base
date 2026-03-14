@@ -146,9 +146,9 @@ class AuthService:
         best_distance = 1.0
         
         for student in students:
-            is_match, distance = face_service.verify_face(
+            is_match, distance = face_service.verify_face_encoding(
                 student.user.face_encoding,
-                image_data
+                face_encoding
             )
             
             if is_match and distance < best_distance:
@@ -218,7 +218,7 @@ class AuthService:
         }
     
     @staticmethod
-    def register_student_face(db: Session, student_id: int, image_data: bytes) -> bool:
+    def register_student_face(db: Session, student_id: int, image_data: bytes) -> tuple[bool, str]:
         """
         Register face for a student (first-time face capture).
         
@@ -228,18 +228,52 @@ class AuthService:
             image_data: Face image bytes
         
         Returns:
-            bool: True if registration successful
+            tuple[bool, str]: (Success, Message/Error)
         """
         student = db.query(Student).filter(Student.id == student_id).first()
         
         if not student:
-            return False
+            return False, "Student not found"
         
         # Generate face encoding (AI Processing)
         face_encoding = face_service.encode_face_from_image(image_data)
         
         if not face_encoding:
-            return False
+            return False, "Failed to encode face. Ensure face is clearly visible."
+        
+        # Get all students with registered faces to check for duplicates
+        students = db.query(Student).join(User).filter(
+            User.role == "student",
+            Student.face_registered == True,
+            User.face_encoding.isnot(None)
+        ).all()
+        
+        # Try to match face with each existing student
+        for existing_student in students:
+            # Skip checking against self (should not be registered anyway)
+            if existing_student.id == student_id:
+                continue
+                
+            is_match, _ = face_service.verify_face_encoding(
+                existing_student.user.face_encoding,
+                face_encoding
+            )
+            
+            if is_match:
+                # Duplicate face found!
+                dept_name = "Unknown Dept"
+                class_name = "Unknown Class"
+                div_name = "Unknown Division"
+                
+                if existing_student.division:
+                    div_name = existing_student.division.name
+                    if existing_student.division.class_:
+                        class_name = existing_student.division.class_.name
+                        if existing_student.division.class_.department:
+                            dept_name = existing_student.division.class_.department.name
+                            
+                error_msg = f"Face already registered to Dept: {dept_name}, Class: {class_name}, Div: {div_name}, Student: {existing_student.first_name} {existing_student.last_name} (Roll No: {existing_student.roll_number})"
+                return False, error_msg
         
         # Store encoding in database (as JSON string)
         import json
@@ -251,4 +285,54 @@ class AuthService:
         
         db.commit()
         
-        return True
+        return True, "Face registered successfully"
+
+    @staticmethod
+    def check_face_uniqueness(db: Session, image_data: bytes) -> tuple[bool, str]:
+        """
+        Check if a face is already registered to any student.
+        
+        Args:
+            db: Database session
+            image_data: Face image bytes
+        
+        Returns:
+            tuple[bool, str]: (IsUnique, Message)
+        """
+        # Generate face encoding (AI Processing)
+        face_encoding = face_service.encode_face_from_image(image_data)
+        
+        if not face_encoding:
+            return False, "Failed to encode face. Ensure face is clearly visible."
+        
+        # Get all students with registered faces to check for duplicates
+        students = db.query(Student).join(User).filter(
+            User.role == "student",
+            Student.face_registered == True,
+            User.face_encoding.isnot(None)
+        ).all()
+        
+        # Try to match face with each existing student
+        for existing_student in students:
+            is_match, _ = face_service.verify_face_encoding(
+                existing_student.user.face_encoding,
+                face_encoding
+            )
+            
+            if is_match:
+                # Duplicate face found!
+                dept_name = "Unknown Dept"
+                class_name = "Unknown Class"
+                div_name = "Unknown Division"
+                
+                if existing_student.division:
+                    div_name = existing_student.division.name
+                    if existing_student.division.class_:
+                        class_name = existing_student.division.class_.name
+                        if existing_student.division.class_.department:
+                            dept_name = existing_student.division.class_.department.name
+                            
+                error_msg = f"Face already registered to Dept: {dept_name}, Class: {class_name}, Div: {div_name}, Student: {existing_student.first_name} {existing_student.last_name} (Roll No: {existing_student.roll_number})"
+                return False, error_msg
+                
+        return True, "Face is unique and can be registered"

@@ -66,8 +66,8 @@ def mark_attendance(
         
         # Attendance window: 15:00-15:10 present, 15:11-15:15 late, after 15:15 absent
         grace_start = time(15, 0)
-        grace_end = time(15, 10, 59)
-        late_cutoff = time(15, 15, 59)
+        grace_end = time(16, 30, 59)
+        late_cutoff = time(17, 0, 59)
         
         if check_time < grace_start:
             raise HTTPException(status_code=400, detail="Attendance window opens at 15:00 (3:00 PM)")
@@ -127,8 +127,13 @@ def mark_attendance(
                 }, f"{student.division_id}_{str(today)}"))
                 
                 return _serialize_attendance(existing)
-            # Otherwise truly idempotent - already marked by face/manual
-            return _serialize_attendance(existing)
+            # Cannot mark attendance multiple times if already correctly marked
+            else:
+                formatted_time = existing.check_in_time.strftime("%I:%M %p") if existing.check_in_time else ""
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Attendance already marked as {existing.status.upper()} at {formatted_time}"
+                )
         
         # Create attendance record
         attendance = DailyAttendance(
@@ -246,10 +251,10 @@ def get_division_attendance(
         AttendanceSession.date == date
     ).first()
     
-    # If the session is explicitly closed, OR it's past 15:15 today, unmarked = absent
+    # If the session is explicitly closed, OR it's past 17:00 today, unmarked = absent
     late_cutoff_passed = False
     if date == str(datetime.today().date()):
-        if datetime.now().time() >= time(15, 15):
+        if datetime.now().time() >= time(17, 0):
             late_cutoff_passed = True
     elif date < str(datetime.today().date()):
         late_cutoff_passed = True # Past days are implicitly closed
