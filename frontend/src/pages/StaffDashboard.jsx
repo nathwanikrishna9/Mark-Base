@@ -64,7 +64,7 @@ function StaffDashboard({ user, onLogout }) {
     let ws;
     if (isAttendanceActive && division) {
       const sessionId = `${division.id}_${selectedDate}`;
-      ws = new WebSocket(`ws://localhost:8000/ws/attendance/${sessionId}`);
+      ws = new WebSocket(`ws://mark-base-backend.railway.internal:8000/ws/attendance/${sessionId}`);
       
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -517,7 +517,7 @@ function StaffDashboard({ user, onLogout }) {
                         {!isAttendanceActive && (
                           <td>
                             <img 
-                              src={`http://localhost:8000/api/admin/students/${record.student_id}/photo`} 
+                              src={`http://mark-base-backend.railway.internal:8000/api/admin/students/${record.student_id}/photo`} 
                               alt={record.student_name || 'Student'}
                               style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }}
                               onError={(e) => { e.target.style.display = 'none' }}
