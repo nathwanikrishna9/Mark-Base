@@ -14,7 +14,7 @@ import StudentAttendance from './pages/StudentAttendance'
 
 function App() {
   const [user, setUser] = useState(null)
-
+  console.log("Test1 for Deployment (method: fork)");
   useEffect(() => {
     // Check if user is logged in (from localStorage)
     const savedUser = localStorage.getItem('markbase_user')
