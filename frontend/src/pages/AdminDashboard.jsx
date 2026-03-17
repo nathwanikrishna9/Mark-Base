@@ -215,7 +215,7 @@ function AdminDashboard({ user, onLogout }) {
     let ws;
     if (activeTab === "attendance" && attendanceDivision && attendanceDate) {
       const sessionId = `${attendanceDivision}_${attendanceDate}`;
-      ws = new WebSocket(`ws://mark-base-backend.railway.internal:8000/ws/attendance/${sessionId}`);
+      ws = new WebSocket(`wss://mark-base-backend.railway.internal:8000/ws/attendance/${sessionId}`);
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);

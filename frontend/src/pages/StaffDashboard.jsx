@@ -64,7 +64,7 @@ function StaffDashboard({ user, onLogout }) {
     let ws;
     if (isAttendanceActive && division) {
       const sessionId = `${division.id}_${selectedDate}`;
-      ws = new WebSocket(`ws://mark-base-backend.railway.internal:8000/ws/attendance/${sessionId}`);
+      ws = new WebSocket(`wss://mark-base-backend.railway.internal:8000/ws/attendance/${sessionId}`);
       
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
