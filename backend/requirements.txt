@@ -11,9 +11,8 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.1
 
-# Face Recognition (AI Feature) - requires dlib which is pre-built via cmake in Dockerfile
+# Face Recognition (AI Feature) - dlib is installed separately in Dockerfile with cmake flags
 face-recognition==1.3.0
-dlib==19.24.2
 opencv-python-headless==4.10.0.84
 numpy>=1.26.0
 Pillow>=10.2.0
