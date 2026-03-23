@@ -394,7 +394,7 @@ function AdminDashboard({ user, onLogout }) {
   const handleEditStudent = (student) => {
     setEditingStudent(student);
     setStudentForm({
-      username: "",
+      username: student.username || "",
       password: "",
       roll_number: student.roll_number,
       enrollment_number: student.enrollment_number || "",
@@ -407,7 +407,6 @@ function AdminDashboard({ user, onLogout }) {
       division_id: student.division_id?.toString() || "",
       date_of_birth: student.date_of_birth || "",
       enrollment_year: student.enrollment_year || new Date().getFullYear(),
-      username: student.username || "",
     });
     setShowStudentForm(true);
   };
