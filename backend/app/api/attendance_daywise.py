@@ -1,6 +1,6 @@
 """
 Day-wise Attendance API - FastAPI router for daily attendance operations.
-Implements 15:00-15:15 attendance window logic.
+Implements 9:15-10:45 attendance window logic (Present 9:15-10:15, Late 10:16-10:45).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -64,13 +64,13 @@ async def mark_attendance(
         check_time = datetime.strptime(request.check_in_time, "%H:%M:%S").time()
         today = date.today()
         
-        # Attendance window: 15:00-15:10 present, 15:11-15:15 late, after 15:15 absent
-        grace_start = time(15, 0)
-        grace_end = time(16, 30, 59)
-        late_cutoff = time(17, 0, 59)
+        # Attendance window: 9:15-10:15 present, 10:16-10:45 late, after 10:45 absent
+        grace_start = time(9, 15)
+        grace_end = time(10, 15, 59)
+        late_cutoff = time(10, 45, 59)
         
         if check_time < grace_start:
-            raise HTTPException(status_code=400, detail="Attendance window opens at 15:00 (3:00 PM)")
+            raise HTTPException(status_code=400, detail="Attendance window opens at 09:15 AM")
             
         # Determine status
         if check_time <= grace_end:
@@ -251,10 +251,10 @@ def get_division_attendance(
         AttendanceSession.date == date
     ).first()
     
-    # If the session is explicitly closed, OR it's past 17:00 today, unmarked = absent
+    # If the session is explicitly closed, OR it's past 10:46 today, unmarked = absent
     late_cutoff_passed = False
     if date == str(datetime.today().date()):
-        if datetime.now().time() >= time(17, 0):
+        if datetime.now().time() >= time(10, 46):
             late_cutoff_passed = True
     elif date < str(datetime.today().date()):
         late_cutoff_passed = True # Past days are implicitly closed
@@ -321,8 +321,8 @@ async def override_attendance(
     ).first()
     
     check_time_map = {
-        'present': time(15, 0),
-        'late': time(15, 11),
+        'present': time(9, 15),
+        'late': time(10, 16),
         'absent': time(23, 59)
     }
     
