@@ -125,8 +125,14 @@ def root():
             "Auto status detection",
             "Leave management",
             "Bulk marking for divisions",
-            "Face recognition support",
+            "Face recognition support (when dlib is available)",
             "Real-time sync via WebSockets"
         ],
         "docs": "/docs"
     }
+
+
+@app.get("/health")
+def health_check():
+    """Railway health check endpoint — returns 200 OK if the server is running."""
+    return {"status": "ok", "app": "Markbase"}

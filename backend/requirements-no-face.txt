@@ -11,10 +11,10 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.1.1
 
-# Image processing (lightweight)
-opencv-python-headless==4.10.0.84
+# Image processing (lightweight, no dlib/cmake needed)
 numpy>=1.26.0
 Pillow>=10.2.0
+opencv-python-headless==4.10.0.84
 
 # Utilities
 python-dotenv==1.0.0
@@ -26,7 +26,3 @@ python-dateutil==2.8.2
 
 # PostgreSQL driver
 psycopg2-binary==2.9.9
-
-# NOTE: face-recognition & dlib are NOT included here because they require heavy
-# cmake compilation that crashes Railway's free-tier build. If you need face
-# recognition locally, install manually: pip install face-recognition dlib==19.24.4
