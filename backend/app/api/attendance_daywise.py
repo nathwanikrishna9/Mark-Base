@@ -1,6 +1,6 @@
 """
 Day-wise Attendance API - FastAPI router for daily attendance operations.
-Implements 9:15-10:45 attendance window logic (Present 9:15-10:15, Late 10:16-10:45).
+Implements 9:15-11:00 attendance window logic (Present 9:15-10:15, Late 10:16-11:00).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -64,10 +64,10 @@ async def mark_attendance(
         check_time = datetime.strptime(request.check_in_time, "%H:%M:%S").time()
         today = date.today()
         
-        # Attendance window: 9:15-10:15 present, 10:16-10:45 late, after 10:45 absent
+        # Attendance window: 9:15-10:15 present, 10:16-11:00 late, after 11:00 absent
         grace_start = time(9, 15)
         grace_end = time(10, 15, 59)
-        late_cutoff = time(10, 45, 59)
+        late_cutoff = time(11, 0, 59)
         
         if check_time < grace_start:
             raise HTTPException(status_code=400, detail="Attendance window opens at 09:15 AM")
@@ -251,10 +251,10 @@ def get_division_attendance(
         AttendanceSession.date == date
     ).first()
     
-    # If the session is explicitly closed, OR it's past 10:46 today, unmarked = absent
+    # If the session is explicitly closed, OR it's past 11:01 today, unmarked = absent
     late_cutoff_passed = False
     if date == str(datetime.today().date()):
-        if datetime.now().time() >= time(10, 46):
+        if datetime.now().time() >= time(11, 1):
             late_cutoff_passed = True
     elif date < str(datetime.today().date()):
         late_cutoff_passed = True # Past days are implicitly closed
